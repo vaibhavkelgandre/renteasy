@@ -1,0 +1,30 @@
+# Dependencies — restored by `npm ci` from the lock file, never committed
+node_modules/
+
+# Secrets. These lines exist BEFORE the first commit that could contain one, because
+# a secret committed once lives in git history forever, even after deletion.
+#
+# Ignore everything starting with .env, then allow the examples back. An enumerated
+# list is how a `.env.test` slips through — deny-all-then-allow is the only form that
+# is safe against the next new variant.
+.env*
+!.env.example
+!.env.*.example
+
+# Test and build output
+coverage/
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+
+# Local assistant/editor configuration — not part of the project
+.claude/
+.cursor/
+.aider*

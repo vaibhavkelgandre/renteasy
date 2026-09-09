@@ -1,0 +1,11 @@
+# Normalise line endings to LF in the repository.
+#
+# Development is on Windows and CI runs on Linux. Without this a file committed with
+# CRLF differs byte-for-byte from the same file written on Linux — which matters most
+# for SQL migrations, whose checksums are how the runner detects an edited file.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+*.ico binary

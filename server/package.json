@@ -1,0 +1,28 @@
+{
+  "name": "renteasy-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "vitest run",
+    "migrate": "node src/scripts/runMigrations.js",
+    "migrate:status": "node src/scripts/runMigrations.js --status",
+    "migrate:test": "node -r dotenv/config src/scripts/runMigrations.js dotenv_config_path=.env.test"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cookie-parser": "^1.4.6",
+    "dotenv": "^16.4.5",
+    "express": "^5.0.0",
+    "express-rate-limit": "^7.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0",
+    "vitest": "^2.1.0"
+  }
+}

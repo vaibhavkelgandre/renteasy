@@ -1,0 +1,136 @@
+# Continuous Integration.
+#
+# Runs on GitHub's machines, not yours. Every push to main and every pull request
+# installs dependencies, migrates a throwaway database, and runs the test suite.
+#
+# Explained line by line in docs/learn/03-github-actions.md.
+# YAML's own traps are in docs/learn/01-yaml.md — read that first if the indentation
+# here looks arbitrary.
+
+name: CI
+
+# WHEN this runs. Note `on:` is a mapping, not a list.
+on:
+  push:
+    branches: [main]
+  # A key with no value means "on any pull request, with default settings".
+  # Without this, a PR from a branch gets no checks at all — which defeats the point.
+  pull_request:
+
+jobs:
+  # "test" is a name we chose, not a keyword. Job ids appear in the GitHub UI.
+  test:
+    runs-on: ubuntu-latest
+
+    # SERVICE CONTAINERS.
+    #
+    # The suite is integration-level: it talks to a real Postgres and TRUNCATEs
+    # tables between tests. The runner starts as an empty machine with no database,
+    # so without this block every test fails with a connection error — the pipeline
+    # would have been red from the first push.
+    #
+    # A `services:` entry runs a Docker container alongside the job and tears it down
+    # afterwards. It is a genuinely throwaway database: created for this run, deleted
+    # with it, so there is nothing to clean up and nothing real to protect. This is
+    # also why a trivial password is fine here and nowhere else.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: renteasy_test
+        ports:
+          # Publishes the container's 5432 on the runner, so the job can reach it at
+          # localhost. Without this the container is only reachable by other
+          # containers, not by steps running directly on the runner.
+          - 5432:5432
+        # WITHOUT THIS THE JOB IS FLAKY AND THE FLAKE IS INTERMITTENT.
+        #
+        # The container is "started" as soon as Docker returns, but Postgres itself
+        # takes a second or two to accept connections. The migrate step would
+        # sometimes win that race and sometimes lose it — which looks like a random
+        # failure rather than a missing wait. `--health-cmd pg_isready` makes GitHub
+        # hold the job until Postgres actually answers.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    # Applied to every step. These are the discrete DB_* variables config/env.js
+    # reads, matching the service container above.
+    #
+    # NODE_ENV=test is what satisfies src/utils/testDatabaseGuard.js — together with
+    # DB_NAME ending in `_test`. The guard is not bypassed for CI; CI is configured to
+    # satisfy it, which is the point of having it.
+    env:
+      NODE_ENV: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: renteasy_test
+      # Any value. Tests sign and verify with whatever this is. It must be SET,
+      # because config/env.js refuses to boot without it and the JWT tests read it
+      # directly to forge tokens.
+      JWT_SECRET: ci-secret-not-used-anywhere-real
+
+    steps:
+      # Copies the repository onto the runner. Nothing exists until this runs — the
+      # runner starts as an empty machine, not as a checkout of your code.
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # QUOTED on purpose. Unquoted, YAML reads a version as a number, and
+          # anything with a single decimal point loses a trailing zero — '3.10'
+          # becomes 3.1. See docs/learn/01-yaml.md §5.2.
+          node-version: '20'
+          # Caches ~/.npm between runs, keyed on the lock file's hash.
+          cache: npm
+          # Both lock files. Neither is at the repository root — this repo keeps
+          # dependencies in server/ and client/. Listing only one means the cache key
+          # ignores the other's changes, so a client dependency bump silently reuses a
+          # stale cache. Missing the path entirely is worse: caching does nothing at
+          # all, with no error, and every run reinstalls from scratch.
+          cache-dependency-path: |
+            server/package-lock.json
+            client/package-lock.json
+
+      # `npm ci`, never `npm install`, in both:
+      #   - ci installs EXACTLY what package-lock.json says. install may resolve a
+      #     newer patch version, so CI would test different code than you ran.
+      #   - ci deletes node_modules first, so a run can never inherit stale state.
+      #   - ci fails loudly if package.json and the lock file disagree.
+      # Both lock files must be committed. If a step fails with "npm ci can only
+      # install with an existing package-lock.json", one wasn't.
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Apply migrations
+        working-directory: server
+        # `migrate`, not `migrate:test` — that script preloads .env.test, which is
+        # gitignored and does not exist here. The job-level `env:` block above already
+        # points at the test database, so the plain script is correct in CI.
+        run: npm run migrate
+
+      - name: Run tests
+        # The ROOT script, deliberately — the same command a human runs locally
+        # (`npm test`), so CI cannot pass while the documented command is broken. It
+        # runs the server suite then the client suite, sequentially.
+        #
+        run: npm test
+
+      - name: Build the client
+        working-directory: client
+        # Tests can pass while a production build fails — a bad import path, a class
+        # that only resolves in dev, an env var read at build time. The cheapest check
+        # that what we would deploy actually compiles. Last, because it is slowest.
+        run: npm run build

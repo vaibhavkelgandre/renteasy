@@ -1,0 +1,17 @@
+{
+  "name": "renteasy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RentEasy - a two-sided marketplace for renting things by the hour, day or month",
+  "scripts": {
+    "test": "npm --prefix server test && npm --prefix client test",
+    "dev": "npm --prefix server run dev",
+    "migrate": "npm --prefix server run migrate",
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "test:server": "npm --prefix server test",
+    "test:client": "npm --prefix client test",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build"
+  }
+}

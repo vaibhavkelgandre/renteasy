@@ -1,0 +1,86 @@
+/**
+ * Global styles and design tokens.
+ *
+ * Tailwind v4 configures itself from CSS — anything in `@theme` becomes a utility
+ * class, so `--color-brand-600` gives you `bg-brand-600`, `text-brand-600`,
+ * `border-brand-600`.
+ */
+
+@import "tailwindcss";
+
+@theme {
+  /* ---- Identity: teal on warm stone ----
+   *
+   * A CONSUMER MARKETPLACE, and both halves of the palette follow from that.
+   *
+   * Teal reads as trust and availability — the green family without the "success
+   * message" connotation of emerald, and without blue's corporate-software feel. It is
+   * also distinct from the two colours that dominate this space: Airbnb's coral and
+   * every booking site's blue.
+   *
+   * Stone rather than zinc or slate: it is a WARM grey. On a page where a stranger
+   * decides whether to lend you a ₹80,000 camera, warm neutrals read as friendly and
+   * cool ones read as administrative. That difference is the whole reason not to reuse
+   * an internal tool's palette here.
+   */
+  --color-brand-50: #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-200: #99f6e4;
+  --color-brand-400: #2dd4bf;
+  --color-brand-500: #14b8a6;
+  --color-brand-600: #0d9488;
+  --color-brand-700: #0f766e;
+  --color-brand-800: #115e59;
+
+  /* ---- Type ----
+   *
+   * System stack: no download, no blocked first paint, no reflow. Looks native on
+   * every device, which matters more on a consumer site reached from a phone than a
+   * distinctive typeface would.
+   */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  /* Prices, rental periods and item counts.
+   *
+   * Money is the thing people compare on a marketplace — ₹800/day against ₹15,000/month
+   * — and comparison needs digits that line up. Tabular figures are what make a column
+   * of prices scannable instead of ragged. */
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo,
+    Consolas, monospace;
+}
+
+@layer base {
+  html {
+    /* Stops the layout shifting sideways when a page grows tall enough to gain a
+     * scrollbar — very visible when browsing a grid of listings. */
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    /* stone-50, not white. A page of white cards on a white background has no
+     * structure; a faintly warm ground gives every card an edge without borders
+     * everywhere. */
+    @apply bg-stone-50 font-sans text-stone-900 antialiased;
+
+    /* 16px base, deliberately not 14px. An internal tool optimises for density
+     * because its users are in it all day; a consumer marketplace optimises for
+     * comfort because its users arrive once and must not squint. */
+    font-size: 16px;
+  }
+
+  /* Every focus ring in the app, in one rule.
+   *
+   * `:focus-visible` rather than `:focus`, so a mouse click does not leave a ring
+   * behind — which is what makes people delete focus styles altogether. */
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-600;
+  }
+}
+
+@layer utilities {
+  /* Every digit the same width, so a column of prices aligns instead of ragging. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
