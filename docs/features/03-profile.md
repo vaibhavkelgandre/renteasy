@@ -1,6 +1,6 @@
 # 03 — Profile, email change and account deletion
 
-**FR-028 to FR-034.** Status: **built and tested** — 29 server tests, 15 client tests. FR-033 is
+**FR-028 to FR-034.** Status: **built and tested** — 29 server tests, 21 client tests. FR-033 is
 partial by design; see §6.
 
 Managing your own account: what you look like, how you sign in, and how you leave.
@@ -187,7 +187,47 @@ The API returns `null` for both — **unknown, not zero** — and the page rende
 hardcoded `0` would read as "this person has never listed anything" rather than "listings do not
 exist yet", which is a different and false statement.
 
-## 7. What this does NOT do
+## 7. Two UI decisions taken after the first pass
+
+Both on direct request, and both changed what is on screen rather than what anything does.
+
+### The header has ONE account control
+
+"Account" and "Sign out" used to sit side by side. That spent twice the width of a phone header on
+something used rarely, and left a **destructive action one stray tap away on every page**. Both now
+live behind an initials button (`components/layout/AccountMenu.jsx`).
+
+- **Initials, not the word "Account"**, because they answer a question a label cannot: *which*
+  account you are in, which matters on a shared device. The accessible name carries the full name,
+  so a screen reader is not left with two letters.
+- **The email is inside the open menu, not in the bar.** It should not be on screen on every page for
+  anyone nearby to read; the menu is where someone deliberately looks to check.
+- **Closed on `pointerdown`, not `click`.** A click listener fires *after* the browser has followed a
+  link inside the menu, so the menu would still be open on the next page.
+- **Escape returns focus to the trigger**, or a keyboard user is dropped at the top of the document
+  with no idea where they were.
+
+### The account page's sections start closed
+
+Four expanded forms stacked on one page is a wall: most of it is irrelevant to why anyone came, and
+the destructive one was permanently on screen. Collapsed, the page opens as a short list of what you
+can do.
+
+- **A closed section's body is NOT RENDERED, not hidden with CSS.** A visually hidden form is still
+  in the tab order, so a keyboard user would tab through three closed forms to reach the fourth. It
+  also keeps the tests honest — a query can only find a field the user could actually see, which is
+  why seven tests had to be rewritten to open a section first rather than being quietly satisfied by
+  a hidden one.
+- **The email section's header carries the pending state**, and that is required rather than a
+  nicety: a change awaiting confirmation lives *inside* that section, so with it shut a link sitting
+  in another inbox would otherwise be completely invisible.
+- **Deletion lost its inner "are you sure" step.** Opening a section headed "Delete your account" is
+  already the deliberate act; a third click before anything happens is friction that teaches people
+  to click through warnings. The password requirement is the real guard, and it stays.
+- **Independent toggles, not an accordion.** Someone changing their email may well want the password
+  form open at the same time.
+
+## 8. What this does NOT do
 
 - **Deletion is soft, and the address is not released.** The row survives, so the person cannot sign
   up with that address again — and a later registration attempt gets the usual silent `202`, so they

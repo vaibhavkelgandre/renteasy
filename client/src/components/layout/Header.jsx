@@ -14,9 +14,11 @@ import { Link } from "react-router-dom";
 import { Logo } from "../Logo.jsx";
 import { Button } from "../ui/Button.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { AccountMenu } from "./AccountMenu.jsx";
 
 export function Header() {
-  const { user, logout } = useAuth();
+  // `logout` lives in AccountMenu now, so this only needs to know IF there is a user.
+  const { user } = useAuth();
 
   return (
     // Sticky, with a translucent background: scrolling a long grid of listings should
@@ -31,23 +33,14 @@ export function Header() {
         <div className="flex items-center gap-2">
           {user ? (
             <>
-              {/* The name is not shown — it eats width on a phone and says nothing
-                  useful. The email is what confirms WHICH account you are in, which
-                  matters on a shared device, and it lives on the account page. */}
               <Button as={Link} to="/" variant="ghost" size="sm">
                 Browse
               </Button>
-              {/* The only way into the account page. Labelled "Account" rather than
-                  showing the name or email: the name eats width on a phone, and the
-                  email is exactly the thing that should not be sitting in the chrome of
-                  every page on a shared screen. It is on the account page itself, which
-                  is where someone goes to check WHICH account they are in. */}
-              <Button as={Link} to="/profile" variant="ghost" size="sm">
-                Account
-              </Button>
-              <Button variant="outline" size="sm" onClick={logout}>
-                Sign out
-              </Button>
+              {/* ONE control for the account, not two. "Account" and "Sign out" used to
+                  sit side by side, which spent twice the width of a phone header on
+                  something used rarely - and left a destructive action one stray tap
+                  away on every page. Both now live behind the initials. */}
+              <AccountMenu />
             </>
           ) : (
             <>

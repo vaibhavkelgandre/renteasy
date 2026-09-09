@@ -65,6 +65,17 @@ function renderApp(path, routes = {}) {
   return calls;
 }
 
+/**
+ * Opens a collapsed section by clicking its header.
+ *
+ * `expanded: false` targets the header button AND asserts it was shut — so if a section
+ * ever starts open, every test using this fails loudly rather than silently passing on
+ * a page that no longer matches the design.
+ */
+async function openSection(user, name) {
+  await user.click(await screen.findByRole("button", { name, expanded: false }));
+}
+
 describe("ProfilePage — the guard", () => {
   beforeEach(() => vi.restoreAllMocks());
 
@@ -80,8 +91,9 @@ describe("ProfilePage — the guard", () => {
     renderApp("/profile", { "/auth/me": SESSION });
 
     expect(await screen.findByRole("heading", { name: /^your account$/i })).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Asha Patil")).toBeInTheDocument();
-    expect(screen.getByText("asha@example.test")).toBeInTheDocument();
+    // The section headers are the page now; the forms behind them are covered in
+    // profileSections.test.jsx.
+    expect(screen.getByRole("button", { name: /your details/i })).toBeInTheDocument();
   });
 });
 
@@ -95,7 +107,8 @@ describe("ProfilePage — details", () => {
     });
 
     const user = userEvent.setup();
-    await user.clear(await screen.findByLabelText(/phone/i));
+    await openSection(user, /your details/i);
+    await user.clear(screen.getByLabelText(/phone/i));
     await user.click(screen.getByRole("button", { name: /save changes/i }));
 
     // `undefined` means "leave alone" and `null` means "clear". An empty string is
@@ -120,7 +133,8 @@ describe("ProfilePage — changing the email", () => {
     });
 
     const user = userEvent.setup();
-    await user.type(await screen.findByLabelText(/new email/i), "new@example.test");
+    await openSection(user, /^email address/i);
+    await user.type(screen.getByLabelText(/new email/i), "new@example.test");
     await user.type(screen.getByLabelText(/^your password$/i), "a-good-password");
     await user.click(screen.getByRole("button", { name: /send confirmation link/i }));
 
@@ -136,32 +150,7 @@ describe("ProfilePage — changing the email", () => {
     expect(page).not.toMatch(/we.{0,3}ve sent you a link/i);
   });
 
-  it("keeps showing the current address, and says the change is pending", async () => {
-    renderApp("/profile", {
-      "/auth/me": {
-        body: {
-          success: true,
-          message: "OK",
-          data: { user: { ...USER, pending_email: "new@example.test" } },
-        },
-      },
-    });
 
-    await screen.findByRole("heading", { name: /^your account$/i });
-
-    // The point of FR-030 rendered: nothing has moved, and the page has to say so or a
-    // link sitting in another inbox is completely invisible.
-    expect(screen.getByText("asha@example.test")).toBeInTheDocument();
-    expect(screen.getByText(/waiting for confirmation of/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /cancel this change/i })).toBeInTheDocument();
-  });
-
-  it("offers no cancel action when nothing is pending", async () => {
-    renderApp("/profile", { "/auth/me": SESSION });
-
-    await screen.findByRole("heading", { name: /^your account$/i });
-    expect(screen.queryByRole("button", { name: /cancel this change/i })).not.toBeInTheDocument();
-  });
 });
 
 describe("ProfilePage — password and deletion", () => {
@@ -171,7 +160,8 @@ describe("ProfilePage — password and deletion", () => {
     const calls = renderApp("/profile", { "/auth/me": SESSION });
 
     const user = userEvent.setup();
-    await user.type(await screen.findByLabelText(/^current password$/i), "a-good-password");
+    await openSection(user, /^password$/i);
+    await user.type(screen.getByLabelText(/^current password$/i), "a-good-password");
     await user.type(screen.getByLabelText(/^new password$/i), "a-brand-new-password");
     await user.type(screen.getByLabelText(/confirm new password/i), "something-else-here");
     await user.click(screen.getByRole("button", { name: /update password/i }));
@@ -180,30 +170,7 @@ describe("ProfilePage — password and deletion", () => {
     expect(calls.some((c) => c.url.includes("/profile/password"))).toBe(false);
   });
 
-  it("states both consequences of deletion BEFORE asking for a password", async () => {
-    renderApp("/profile", { "/auth/me": SESSION });
 
-    await screen.findByRole("heading", { name: /^your account$/i });
-
-    // The second consequence is surprising and permanent, and a person deserves to know
-    // it while they are still deciding — not in a confirmation dialog after they have
-    // committed to the idea.
-    expect(screen.getByText(/cannot be undone/i)).toBeInTheDocument();
-    expect(screen.getByText(/stays claimed by the deleted account/i)).toBeInTheDocument();
-
-    // And the destructive control is behind a deliberate second step.
-    expect(screen.queryByRole("button", { name: /permanently delete/i })).not.toBeInTheDocument();
-  });
-
-  it("asks for a password before deleting", async () => {
-    renderApp("/profile", { "/auth/me": SESSION });
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: /^delete account$/i }));
-
-    expect(await screen.findByRole("button", { name: /permanently delete/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /keep my account/i })).toBeInTheDocument();
-  });
 });
 
 describe("PublicProfilePage", () => {

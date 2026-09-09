@@ -12,7 +12,7 @@
  * Save button could only report the vaguest possible outcome.
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
@@ -27,18 +27,95 @@ function memberSince(iso) {
 }
 
 /**
- * A titled section with its own form, message and error state.
+ * A collapsible section — CLOSED until its header is clicked.
  *
- * Each section owns its own feedback because they succeed and fail independently —
- * a shared banner would report the last thing that happened wherever the reader
- * happens to be looking.
+ * Four expanded forms stacked on one page is a wall: most of it is irrelevant to why
+ * anyone came here, and the destructive one is permanently on screen. Collapsed, the
+ * page opens as a short list of what you can do, and opening one is a deliberate act.
+ *
+ * Each section still owns its own feedback, because they succeed and fail
+ * independently — a shared banner would report the last thing that happened wherever
+ * the reader happens to be looking.
+ *
+ * THE BODY IS NOT RENDERED WHILE CLOSED, rather than hidden with CSS. A visually
+ * hidden form is still in the tab order and still found by assistive technology, so a
+ * keyboard user would tab through three closed forms to reach the fourth. It also
+ * keeps the tests honest: a query can only find a field the user could actually see.
+ *
+ * @param {object} props
+ * @param {string} props.title
+ * @param {string} [props.description] Shown in the header, so a closed section still
+ *        says what it is for.
+ * @param {boolean} [props.danger] Tints the section for the destructive one.
  */
-function Section({ title, description, children }) {
+function Section({ title, description, danger = false, children }) {
+  const [open, setOpen] = useState(false);
+  // useId, not a hand-passed prop: two sections would otherwise share an id and
+  // aria-controls would point at the wrong panel.
+  const panelId = useId();
+
   return (
-    <Card className="p-6 sm:p-7">
-      <h2 className="text-base font-semibold text-stone-900">{title}</h2>
-      {description && <p className="mt-1 text-sm leading-relaxed text-stone-500">{description}</p>}
-      <div className="mt-5">{children}</div>
+    <Card className={danger ? "border-rose-200 bg-rose-50/40" : ""}>
+      <h2>
+        <button
+          type="button"
+          onClick={() => setOpen((wasOpen) => !wasOpen)}
+          aria-expanded={open}
+          aria-controls={panelId}
+          className={[
+            "flex w-full items-center justify-between gap-4 rounded-2xl p-6 text-left sm:p-7",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600",
+            danger ? "hover:bg-rose-50/60" : "hover:bg-stone-50",
+          ].join(" ")}
+        >
+          <span className="min-w-0">
+            <span
+              className={[
+                "block text-base font-semibold",
+                danger ? "text-rose-900" : "text-stone-900",
+              ].join(" ")}
+            >
+              {title}
+            </span>
+            {description && (
+              <span
+                className={[
+                  "mt-1 block text-sm leading-relaxed",
+                  danger ? "text-rose-800" : "text-stone-500",
+                ].join(" ")}
+              >
+                {description}
+              </span>
+            )}
+          </span>
+
+          {/* Rotates rather than swapping glyph, so the control reads as one thing
+              changing state instead of two different buttons. aria-hidden because
+              aria-expanded on the button already announces the state. */}
+          <svg
+            className={[
+              "size-5 shrink-0 transition-transform",
+              danger ? "text-rose-400" : "text-stone-400",
+              open ? "rotate-180" : "",
+            ].join(" ")}
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              fillRule="evenodd"
+              d="M5.3 7.3a1 1 0 011.4 0L10 10.6l3.3-3.3a1 1 0 111.4 1.4l-4 4a1 1 0 01-1.4 0l-4-4a1 1 0 010-1.4z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </button>
+      </h2>
+
+      {open && (
+        <div id={panelId} className="border-t border-stone-200/70 p-6 pt-5 sm:p-7 sm:pt-5">
+          {children}
+        </div>
+      )}
     </Card>
   );
 }
@@ -184,7 +261,15 @@ function EmailSection({ user, onChanged }) {
   return (
     <Section
       title="Email address"
-      description="You sign in with this address, and it is where password resets go."
+      // THE HEADER CARRIES THE PENDING STATE, and that is required rather than a nicety
+      // now that sections start closed. A change waiting on confirmation lives inside
+      // this section - so with the section shut, a link sitting in another inbox would
+      // be completely invisible and the page would look like nothing had happened.
+      description={
+        user.pending_email
+          ? `Waiting for confirmation of ${user.pending_email} — still using ${user.email}`
+          : user.email
+      }
     >
       <div className="mb-5 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
         <p className="text-sm text-stone-500">Current</p>
@@ -329,7 +414,6 @@ function PasswordSection() {
 
 /** FR-034 — delete the account. */
 function DangerSection({ onDeleted }) {
-  const [confirming, setConfirming] = useState(false);
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
@@ -354,48 +438,41 @@ function DangerSection({ onDeleted }) {
   }
 
   return (
-    <Card className="border-rose-200 bg-rose-50/40 p-6 sm:p-7">
-      <h2 className="text-base font-semibold text-rose-900">Delete your account</h2>
+    <Section
+      title="Delete your account"
+      description="Permanent, and it does not free up your email address."
+      danger
+    >
+      {/* Both consequences in full, and BEFORE the form rather than in a confirmation
+          dialog after it. The second one is surprising and irreversible, and a person
+          deserves to know it while they are still deciding.
 
-      {/* Both consequences stated BEFORE the button, not in a confirmation dialog
-          afterwards. The second one in particular is surprising and permanent, and a
-          person deserves to know it while they are still deciding. */}
-      <p className="mt-1 text-sm leading-relaxed text-rose-800">
+          There used to be an extra "are you sure" step in front of this. Collapsing the
+          section replaced it: opening a section marked "Delete your account" is already
+          the deliberate act, and a third click before anything happens is friction that
+          teaches people to click through warnings. The password is the real guard. */}
+      <p className="text-sm leading-relaxed text-rose-800">
         This cannot be undone, and there is no way to restore it yourself. Your email
         address stays claimed by the deleted account, so you will not be able to sign up
         again with it.
       </p>
 
-      <div className="mt-5">
-        {!confirming ? (
-          <Button variant="outline" onClick={() => setConfirming(true)}>
-            Delete account
-          </Button>
-        ) : (
-          <form onSubmit={handleDelete} className="space-y-4" noValidate>
-            {formError && <Alert tone="error">{formError}</Alert>}
+      <form onSubmit={handleDelete} className="mt-5 space-y-4" noValidate>
+        {formError && <Alert tone="error">{formError}</Alert>}
 
-            <Field
-              label="Your password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              error={errors.currentPassword}
-              autoComplete="current-password"
-              autoFocus
-            />
+        <Field
+          label="Your password"
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          error={errors.currentPassword}
+          autoComplete="current-password"
+        />
 
-            <div className="flex flex-wrap gap-3">
-              <Button type="submit" variant="danger" loading={busy}>
-                Permanently delete
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
-                Keep my account
-              </Button>
-            </div>
-          </form>
-        )}
-      </div>
-    </Card>
+        <Button type="submit" variant="danger" loading={busy}>
+          Permanently delete
+        </Button>
+      </form>
+    </Section>
   );
 }
