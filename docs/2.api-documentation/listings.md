@@ -112,6 +112,7 @@ only to somebody who already had its URL.
 | `city` | Case-insensitive |
 | `unit` | `hourly` / `daily` / `monthly`. **Defaults to `daily`** |
 | `minPricePaise`, `maxPricePaise` | Against the chosen `unit` |
+| `availableFrom`, `availableTo` | ISO instants. **Both or neither** — one alone is a `400` |
 | `sort` | `newest` (default) / `price_asc` / `price_desc` |
 | `limit` | Default **24**, max **48** |
 | `offset` | Default 0 |
@@ -137,6 +138,12 @@ ones, and there is a test probing each filter separately.
 
 **`%` and `_` in `q` are escaped**, so "50% off" searches for that text rather than matching
 everything.
+
+**The date filter is a `NOT EXISTS`, not a join, and that is load-bearing (FR-303).** A join
+against bookings and blackouts multiplies a listing by its rows, so it would need a `DISTINCT` —
+and a `DISTINCT` breaks the `count(*) OVER ()` above, silently making `total` disagree with the
+page. It also excludes a listing whose **notice period** has not elapsed by the requested start,
+so the filter answers "can I book this" rather than only "is it free".
 
 Ordering always falls through to `created_at DESC` as a tiebreaker. Without it, two listings at the
 same price have no defined order and the same row can appear on two pages.
@@ -198,3 +205,108 @@ publish checklist: a caller who cannot see the price cannot work out what to cha
 
 `400` for an inverted range or a listing with no rate at all — quoting ₹0 for a camera would be
 worse than refusing. `404` for a draft, unless you own it.
+
+---
+
+## `GET /listings/:id/availability` — FR-204, FR-205
+
+**Public, and owner-aware.** One endpoint for two audiences, differing by a single field.
+
+```json
+{ "success": true, "message": "OK",
+  "data": {
+    "unavailable": [
+      { "startsAt": "2026-10-03T00:00:00.000Z", "endsAt": "2026-10-05T00:00:00.000Z" }
+    ],
+    "noticePeriodHours": 24,
+    "bookableFrom": "2026-09-11T12:00:00.000Z"
+  } }
+```
+
+| Parameter | Notes |
+|---|---|
+| `from`, `to` | Optional ISO instants. Without them the whole future is returned |
+
+**`kind` (`BOOKING` or `BLACKOUT`) is added ONLY for the owner.** Whether a period is somebody
+else's booking or the owner keeping the item back is a fact about their business and about another
+renter's arrangements — a visitor is told only that it is taken. The client renders from whether
+the field arrived, so it cannot display a distinction that never reached the browser.
+
+**Bookings and blackouts come from one `UNION ALL`, not a derived availability table.** There is
+nothing to keep in sync, which is the bug that shape exists to make impossible.
+
+**`bookableFrom` is resolved to an instant by the server, not left as a number.** A client
+computing `now + noticePeriodHours` would be a second copy of FR-203, and would drift from the
+booking endpoint's refusal the moment the rule changed. `earliestBookableFrom` is exported and
+shared by both for the same reason.
+
+**`404` for a draft or unpublished listing, unless you own it** — the same rule, and the same
+message, as the listing itself.
+
+## `GET /listings/:id/blackouts` — the owner's own list
+
+**Owner only.** `403` for a published listing somebody else owns, `404` for a draft — see the
+403-versus-404 note above.
+
+```json
+{ "success": true, "message": "OK",
+  "data": { "blackouts": [
+    { "id": "…", "listing_id": "…", "starts_at": "…", "ends_at": "…",
+      "reason": "Lending it to my brother" }
+  ] } }
+```
+
+**Separate from `/availability`, deliberately.** That endpoint is world-readable and therefore
+carries neither an **id** — a handle for deleting a row — nor a **reason**, which is the owner's
+private note. Folding them in to save a request would leak both to every visitor. The calendar is
+fed by the public endpoint and the editable list beneath it by this one.
+
+Takes the same optional `from` / `to` window.
+
+## `POST /listings/:id/blackouts` — FR-200
+
+**Owner only.** No verified email needed: blocking your own dates puts nothing at stake for
+anybody else.
+
+```json
+{ "startsAt": "2026-10-03T00:00:00Z", "endsAt": "2026-10-05T00:00:00Z",
+  "reason": "Lending it to my brother" }
+```
+
+`201` with the created row. `reason` is optional, 200 characters, and **never returned to a
+renter**.
+
+| Status | Cause |
+|---|---|
+| `400` | `endsAt` is not after `startsAt` |
+| `409` | Overlaps a blackout you already have — the `EXCLUDE` constraint (`23P01`) |
+| `409` | Overlaps a **confirmed booking** — FR-206, raised by a trigger (`23514`) |
+
+**The two 409s carry different messages on purpose**, because the owner's next move differs: an
+overlapping blackout is theirs to merge or move, while a confirmed booking must be cancelled first.
+
+**FR-206 is enforced by a database trigger, not by the service**, so it holds against SQL that
+never went through the application — there is a test proving exactly that. It is *not* as strong as
+FR-202's `EXCLUDE`: the rule spans two tables, which no exclusion constraint can express, so under
+READ COMMITTED a residual write-skew window remains. `007_create_availability.sql` records why that
+is accepted here and not for double booking.
+
+## `DELETE /listings/:id/blackouts/:blockId`
+
+**Owner only.** `200` with `data: null`; `404` if that blackout does not belong to that listing.
+
+Scoped by `listing_id` as well as `id`, so knowing a blackout's uuid is not enough to delete it
+through a listing you do not own — the same rule as photos.
+
+## Notice period — FR-203
+
+Not its own endpoint. `notice_period_hours` is a nullable column on the listing, set through
+`PATCH /listings/:id` like any other field, and `null` means "bookable right away".
+
+**`null` and `0` are the same answer and both are legitimate**, which is why the validator is
+`min(0)` rather than `positive()`. Sending `undefined` means "leave alone" to the PATCH, so
+clearing the value requires an explicit `null`.
+
+Enforced in two places that must not drift: `POST /bookings` refuses a start inside the window and
+**says how much notice is needed**, and `GET /listings` excludes such listings from a date-filtered
+search.

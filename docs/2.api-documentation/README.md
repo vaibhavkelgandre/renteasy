@@ -16,7 +16,7 @@ email) · **Admin**.
 |---|---|
 | [Authentication](auth.md) | register, verify, sign in, sessions, password reset |
 | [Profile](profile.md) | your own account, and the public projection |
-| [Listings](listings.md) | create, publish, photos, and **browse** |
+| [Listings](listings.md) | create, publish, photos, **browse**, quote and **availability** |
 
 ---
 
@@ -82,6 +82,23 @@ several distinguishable situations one indistinguishable answer.
 | `POST` | `/listings/:id/photos` | **Verified** (owner) | `multipart` — `photos[]` | `201` `{ listing }` | `400`, `403`, `404` |
 | `PATCH` | `/listings/:id/photos/order` | Session (owner) | `{ photoIds }` | `200` `{ listing }` | `400`, `403`, `404` |
 | `DELETE` | `/listings/:id/photos/:photoId` | Session (owner) | — | `200` `{ listing }` | `403`, `404` |
+| `GET` | `/listings/:id/quote` | **Public** | — (`start`, `end`) | `200` `{ quote, blockers, quotedAt }` | `400`, `404` |
+| `GET` | `/listings/:id/availability` | **Public**, owner-aware | — (`from`, `to`) | `200` `{ unavailable, noticePeriodHours, bookableFrom }` | `404` |
+| `GET` | `/listings/:id/blackouts` | Session (owner) | — (`from`, `to`) | `200` `{ blackouts }` | `401`, `403`, `404` |
+| `POST` | `/listings/:id/blackouts` | Session (owner) | `{ startsAt, endsAt, reason? }` | `201` `{ blackout }` | `400`, **`409`**, `403`, `404` |
+| `DELETE` | `/listings/:id/blackouts/:blockId` | Session (owner) | — | `200`, `data: null` | `403`, `404` |
+
+### Bookings
+
+Full notes: [features/06-bookings.md](../features/06-bookings.md) — these do not yet have a page of
+their own here.
+
+| Method | Path | Auth | Body | Success | Errors |
+|---|---|---|---|---|---|
+| `POST` | `/bookings` | **Verified** | `{ listingId, startsAt, endsAt, message? }` | `201` `{ booking }` | `400`, **`409`**, `403`, `404` |
+| `GET` | `/bookings` | Session | — (`side=renter\|owner`) | `200` `{ bookings, side }` | `400`, `401` |
+| `GET` | `/bookings/:id` | Session (party) | — | `200` `{ booking }` — the booking carries `events` and `availableActions` | `403`, `404` |
+| `POST` | `/bookings/:id/actions` | Session (party) | `{ action, comment? }` | `200` `{ booking }` | `400`, **`409`**, `403`, `404` |
 
 ---
 
@@ -110,5 +127,7 @@ Not built. Listed so the shape is known — see [1.status.md](../1.status.md).
 
 | Endpoint | Step | Note |
 |---|---|---|
-| `GET /listings/:id/quote` | 6 | The cheapest-applicable-rate calculation, server-side and itemised |
-| `POST /bookings`, `POST /bookings/:id/offers` | 6–7 | Negotiation |
+| `POST /bookings/:id/offers` | 7 | Offer / counter-offer. An accepted price is **frozen into the booking** |
+| `POST /bookings/:id/actions` — `START` / `RETURN` / `COMPLETE` | 8 | Declared in the state machine, deliberately not yet reachable by any route |
+| `POST /bookings/:id/reviews` | 9 | Two-way, and only after a completed booking |
+| Payments and payouts | 10 | Never marked paid because the client said so — webhook verification only |

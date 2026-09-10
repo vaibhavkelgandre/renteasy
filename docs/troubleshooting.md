@@ -239,3 +239,45 @@ dev server starts, the page renders, requests get real HTTP responses — and th
 from somewhere else entirely. **Assign every project explicit, distinct ports rather than
 taking the framework defaults.** Two projects both using 5000/5173 will collide the first
 time you run them together, and the symptom will point anywhere but at the port.
+
+## A guard that never fired — a BEFORE trigger cannot see a generated column
+
+**Symptom.** FR-206 says a blackout may not cover a confirmed booking. The trigger enforcing it
+was written, the migration applied cleanly, and blackouts over confirmed bookings were accepted
+anyway. Nothing errored.
+
+**Root cause.** The trigger was `BEFORE INSERT OR UPDATE`, and it compared `b.period && NEW.period`.
+`period` is a **stored generated column**, and Postgres computes those *after* row-level BEFORE
+triggers run — so `NEW.period` was `NULL`. `anything && NULL` is `NULL`, which is not true, so
+`IF FOUND` never fired and the guard matched nothing.
+
+**Fix.** `AFTER INSERT OR UPDATE`. The row is inserted and the exception rolls it back, which for a
+validation trigger is equivalent — and it avoids re-deriving `tstzrange(starts_at, ends_at, '[)')`
+inside the trigger, where it could drift from the column's own definition.
+
+**Why this one is worth remembering.** It **failed open**. A guard that fails closed announces
+itself on the first ordinary use; one that fails open looks like a working feature indefinitely.
+The only reason it was caught before shipping is that the test suite tried to *defeat* the rule
+rather than exercise the happy path. **Any guard that can fail open needs a test that attempts the
+thing it forbids** — asserting the allowed case still works proves nothing about it.
+
+Same family: a `NOT NULL` you forgot, a `CHECK` on a column that is always null, an `EXCLUDE` whose
+`WHERE` never matches. All silent.
+
+## Nine tests "failed" that pass alone — two suites sharing one test database
+
+**Symptom.** A full server run reported 9 failures across 2 files. Re-running either file on its
+own passed. So did the whole suite, a minute later.
+
+**Root cause.** Two `vitest run` invocations were in flight against `renteasy_test` at once — one
+left in the background, one started in the foreground. The suite truncates tables between tests, so
+each run was deleting the other's fixtures mid-test.
+
+**The tell.** Failures scattered across unrelated files, each one an assertion about data that
+should exist and doesn't — a `200` that came back `404`, a count that came back short. A real
+regression clusters around what changed; this pattern is a shared-resource collision.
+
+**Rule.** **Never run two server suites at once on this machine.** Run one, wait, run the other.
+Backgrounding a test run and then starting another is the easy way to do this by accident. The
+client suite is safe to run alongside a server one — it touches no database — but a machine busy
+with both is slow enough to produce timeout failures that look just as real.
