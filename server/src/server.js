@@ -12,12 +12,22 @@ import { assertEnvIsValid, env } from "./config/env.js";
 import { closeDatabase } from "./config/db.js";
 import { describeMailMode } from "./config/mailer.js";
 import { describeMediaMode } from "./config/cloudinary.js";
+import { startScheduler } from "./scheduler.js";
 
 // Validate BEFORE binding a port. The order matters: a process that fails validation
 // must never reach a state where it accepts a request it cannot serve. Getting this
 // backwards produces a service that answers /health with 200 and then 500s on the
 // first real call - which looks healthy to every monitor you have.
 assertEnvIsValid();
+
+/**
+ * Assigned once the port is bound — see the listen callback below.
+ *
+ * `let` rather than `const` because `shutdown` closes over it and is registered
+ * before it exists. A signal arriving in that window finds `undefined`, which is
+ * exactly right: there is no schedule to stop yet.
+ */
+let stopScheduler;
 
 const server = app.listen(env.port, () => {
   console.log(`[server] listening on port ${env.port} (${env.nodeEnv})`);
@@ -35,6 +45,26 @@ const server = app.listen(env.port, () => {
   // like a bug in registration rather than a missing environment variable.
   console.log(`[mail] ${describeMailMode()}`);
   console.log(`[media] ${describeMediaMode()}`);
+
+  /**
+   * Time-based rules — FR-508 today, FR-603 from step 7.
+   *
+   * Started HERE rather than in `app.js`, and `scheduler.js` explains why at length:
+   * app.js is what the tests import, so a timer there would run against their
+   * fixtures.
+   *
+   * INSIDE the listen callback, not beside it. Two reasons, and the first was found
+   * by reading a real boot log: `app.listen` returns immediately and its callback
+   * fires later, so a call placed after it runs BEFORE every line above and the
+   * banner comes out backwards. The second matters more — a port that fails to bind
+   * should not leave a process sweeping the database on a timer while serving
+   * nothing.
+   *
+   * ONE INSTANCE ASSUMED. Two processes would both sweep; the state machine refuses
+   * the loser, so nothing is corrupted — it just reports real work as `failed`.
+   * Deploying a second instance means giving this an advisory lock first.
+   */
+  stopScheduler = startScheduler();
 });
 
 /**
@@ -49,6 +79,11 @@ const server = app.listen(env.port, () => {
  */
 async function shutdown(signal) {
   console.log(`[server] ${signal} received, shutting down`);
+
+  // Before draining, not after. An interval that fires mid-shutdown would start a
+  // query against a pool that is about to close, and the error would be the last
+  // thing in the log — reading as though the shutdown itself had failed.
+  stopScheduler?.();
 
   server.close(async () => {
     // Close the pool only after the HTTP server has drained - a request still

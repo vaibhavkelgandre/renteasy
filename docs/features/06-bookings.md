@@ -1,8 +1,8 @@
 # 06 — Bookings, the double-booking guard and the state machine
 
 **FR-500 to FR-514**, plus FR-400–407 (the [quote engine](../7.functional-requirements.md), built
-first). Status: **API complete and tested** — 30 integration tests plus 26 unit tests for pricing.
-Client screens still to come.
+first). Status: **complete** — API, client screens, 31 integration tests and 26 unit tests for
+pricing.
 
 The step the README calls one of the four things this product lives or dies on.
 
@@ -146,6 +146,31 @@ the refusal into a 409 naming the remedy — unpublish.
 > `foreign_key_violation`. Catching only the familiar 23503 — which this did first — let a RESTRICT
 > sail past into a 500.
 
+### 3.8 FR-508 is a timer, and it lives outside the app
+
+A request nobody answers expires after 48 hours. Nothing in a request handler can make that happen
+— the whole condition is that no request arrived — so `scheduler.js` runs `sweepExpiredRequests`
+hourly. Hourly against a 48-hour window: an hour of lateness is a rounding error nobody can see.
+
+**Started from `server.js`, never `app.js`.** That is the load-bearing part. The integration tests
+import `app.js` and never bind a port; a timer started there would run during every test file, in
+parallel, expiring fixtures other tests are asserting against — and the failures would look like
+concurrency bugs in this code rather than like a stray timer.
+
+The sweep **reuses `actOnBooking`** rather than issuing a bulk UPDATE, so an expiry passes through
+the same state machine and writes the same kind of event as every other transition. It records **no
+actor**: writing down the owner as having expired a request they never saw would put a false action
+in an append-only trail, and the trail's whole value is that everything in it happened.
+
+`runSweeps` never rejects, and there is a test asserting exactly that rather than asserting the
+schedule keeps ticking — the first version of that test did the latter and passed with the error
+handling removed, because `setInterval` does not care whether its callback rejected. What actually
+breaks without it is the process, on an unhandled rejection.
+
+**One instance is assumed.** Two would both sweep; the state machine refuses the loser, so nothing
+is corrupted — it just reports real work as `failed`. A second instance needs an advisory lock
+first.
+
 ## 4. Schema
 
 Migration `006_create_bookings.sql`: `bookings`, `booking_events`, the exclusion constraint, and
@@ -153,13 +178,6 @@ the append-only trigger. Column notes: [3.db.md](../3.db.md).
 
 ## 5. What this does NOT do
 
-- **No client screens.** The API is complete and tested; nothing in the browser requests or accepts
-  a booking yet.
-- **FR-508's sweep exists but nothing schedules it.** `sweepExpiredRequests` is written and
-  reachable; wiring it to a timer belongs with notifications, and a sweep running before anyone can
-  see its effects is a quiet way to lose bookings.
-- **No blackout dates or notice period** (the other halves of FR-503 and FR-504) — step 4, now
-  unblocked by this table.
 - **No refund policy** (FR-509's second half) — needs payments, step 10.
 - **No reliability score** (FR-510's second half) — the data to compute it is recorded; nothing
   computes it.

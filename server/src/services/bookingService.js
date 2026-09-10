@@ -357,9 +357,10 @@ export async function listBookings(actor, side) {
  * A sweep with its own UPDATE would be the second write path this file exists to
  * prevent.
  *
- * Not scheduled — nothing calls this yet. Wiring it to a timer belongs with the rest
- * of the notification work, and a sweep that runs before anyone can see its effects
- * is just a way to lose bookings quietly.
+ * Scheduled hourly by `scheduler.js`, which `server.js` starts — never `app.js`, or
+ * it would run during the tests. Returns counts rather than throwing, because the
+ * caller is a timer with nobody to report to: one booking that cannot be expired,
+ * because somebody accepted it a moment ago, must not stop the rest of the sweep.
  *
  * @returns {Promise<{ expired: number, failed: number }>}
  */
