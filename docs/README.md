@@ -33,6 +33,7 @@ never renumbered and never reused.
 - [01 — Public registration & email verification](features/01-public-registration.md) ✅ built
 - [02 — Password reset](features/02-password-reset.md) ✅ built
 - [03 — Profile, email change and account deletion](features/03-profile.md) ✅ built
+- [04 — Listings, the rate card and photos](features/04-listings.md) ✅ built
 
 ## Four docs are not optional
 

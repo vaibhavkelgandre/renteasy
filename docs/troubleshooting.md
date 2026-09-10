@@ -6,6 +6,52 @@ Newest first.
 
 ---
 
+## EXIF was never stripped — a parameter that reads right and does something else
+
+**Symptom.** None. Nothing failed, no test went red, and the images the app displays were clean.
+Found by re-reading the upload options while diagnosing an unrelated 500.
+
+**Root cause.** The upload passed `image_metadata: false`, with a comment stating it stripped EXIF.
+It does not. That parameter controls whether the **API response includes** an asset's metadata — it
+has no effect on what is stored.
+
+Cloudinary *does* strip metadata from **derived** images, which is why this hid so well: every URL
+the app hands out is derived (`w_400,…` and `w_1200,…`), so every image anyone actually saw was
+clean. But the untransformed original stayed at `/image/upload/<public_id>`, GPS intact, and the
+public_id is in the page's HTML. Anyone could take an owner's coordinates off a listing photo by
+deleting the transformation from a URL.
+
+**Fix.** An **incoming transformation**, which replaces the stored original rather than producing a
+new derivative alongside it:
+
+```js
+transformation: [{ width: 2400, height: 2400, crop: "limit", quality: "auto:good", flags: "strip_profile" }]
+```
+
+**`quality: auto:good` is not tuning — it is the part that works.** `c_limit` only acts when an
+image exceeds the bound, so anything already under 2400px would pass through untouched. The quality
+directive forces the re-encode regardless of size, and metadata does not survive it.
+
+**Why nothing caught it, which is the more useful half.** The suite runs with `NODE_ENV=test`, where
+the uploader returns a deterministic fake and **never builds these options at all**. That guard is
+right — it stops the suite writing into a real account — but it means every option in this object
+was unasserted. The flag could have said anything.
+
+Two things changed as a result:
+
+- `listingUploadOptions()` is **extracted and exported** so `cloudinary.test.js` can assert on it,
+  including an explicit regression test that `image_metadata` is absent.
+- The claim was **verified against the real provider rather than reasoned about**: a JPEG carrying an
+  Exif APP1 segment with GPS tags and a marker string went in at 246 bytes, and the re-downloaded
+  stored original came back at 160 with neither the `Exif` header nor the marker.
+
+**The general lesson.** A test-mode fake that short-circuits before the provider is reached leaves
+everything past that point unverified, and a confident comment is not evidence. When a config value
+is the whole of a safety control, assert it — and confirm the behaviour end to end at least once
+against the real thing.
+
+---
+
 ## "Confirming your email…" span forever — a ref guard and a `cancelled` flag deadlocked
 
 **Symptom.** `/verify/:token` sat on its loading spinner indefinitely (minutes), never
