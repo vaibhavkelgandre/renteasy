@@ -410,7 +410,7 @@ const RATE_COLUMN = {
 function buildBrowseWhere(filters) {
   const {
     categorySlug, city, q, unit = "daily", minPricePaise, maxPricePaise,
-    availableFrom, availableTo,
+    availableFrom, availableTo, excludeOwnerId,
   } = filters;
   const rateColumn = RATE_COLUMN[unit] ?? RATE_COLUMN.daily;
 
@@ -419,6 +419,24 @@ function buildBrowseWhere(filters) {
   // somebody's unfinished work and an unpublished listing was deliberately withdrawn.
   const conditions = ["l.status = 'PUBLISHED'"];
   const params = [];
+
+  /**
+   * FR-502's other half, on the browse side.
+   *
+   * You cannot book your own listing, so showing it among things you can rent is a
+   * dead end: click through and the only action on the page is one the server will
+   * refuse. Your own items belong in Your listings, which is a different job — an
+   * inventory to manage rather than a shelf to shop from.
+   *
+   * A FILTER RATHER THAN A SEPARATE SECTION, deliberately. A "yours" band inside the
+   * results would have to be paged, sorted and filtered alongside them, and would
+   * quietly break `count(*) OVER ()` — `total` is the number of things you can rent,
+   * and mixing in rows you cannot makes the pager lie.
+   */
+  if (excludeOwnerId) {
+    params.push(excludeOwnerId);
+    conditions.push(`l.owner_id <> $${params.length}`);
+  }
 
   if (categorySlug) {
     params.push(categorySlug);

@@ -97,8 +97,13 @@ what stops a grid jumping as photos load.
 
 ## `GET /listings` — browse
 
-**Public.** The endpoint that makes a published listing findable; before it, a listing was visible
-only to somebody who already had its URL.
+**Public, and owner-aware.** The endpoint that makes a published listing findable; before it, a
+listing was visible only to somebody who already had its URL.
+
+**A signed-in caller never sees their own listings here** — FR-502 says you cannot book your own
+item, so offering it among things you can rent is a dead end. It is a `WHERE` condition rather than
+a post-filter, so `total` stays honest; signed out, there is nobody to exclude and the whole
+catalogue comes back.
 
 ```json
 { "success": true, "message": "OK",

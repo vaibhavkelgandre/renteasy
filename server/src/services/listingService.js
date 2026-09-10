@@ -502,14 +502,23 @@ export async function reorderListingPhotos(id, actor, photoIds) {
  * @param {object} query Already validated, defaulted and capped by browseQuerySchema.
  * @returns {Promise<{ listings: object[], total: number, limit: number, offset: number }>}
  */
-export async function browseListings(query) {
+export async function browseListings(query, actor = null) {
   const {
     limit, offset, sort, category, city, q, unit, minPricePaise, maxPricePaise,
     availableFrom, availableTo,
   } = query;
 
   const { listings, total } = await findPublishedListings({
-    filters: { categorySlug: category, city, q, unit, minPricePaise, maxPricePaise, availableFrom, availableTo },
+    filters: {
+      categorySlug: category, city, q, unit, minPricePaise, maxPricePaise,
+      availableFrom, availableTo,
+
+      // FR-502 again: a signed-in visitor is shopping, and their own listings are
+      // not something they can rent. Signed out there is nobody to exclude, so the
+      // results are the whole catalogue — which is also what keeps this endpoint
+      // cacheable for anonymous callers if that is ever wanted.
+      excludeOwnerId: actor?.id ?? null,
+    },
     sort,
     limit,
     offset,

@@ -195,7 +195,7 @@ export async function patchPhotoOrder(req, res, next) {
  */
 export async function getBrowse(req, res, next) {
   try {
-    const page = await browseListings(req.validatedQuery);
+    const page = await browseListings(req.validatedQuery, req.user ?? null);
     sendSuccess(res, { message: "OK", data: page });
   } catch (error) {
     next(error);

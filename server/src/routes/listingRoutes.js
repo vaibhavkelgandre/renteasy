@@ -74,14 +74,19 @@ router.get("/cities", getCities);
 /**
  * BROWSE - FR-300 to FR-309. Public, paginated, filtered.
  *
- * No auth middleware at all, not even attachUserIfPresent: browsing needs no account
- * and the result does not vary by who is asking. The repository restricts to PUBLISHED
- * as its first condition, so there is no caller for whom a draft could appear.
+ * `attachUserIfPresent`, NOT `requireAuth`. Browsing still needs no account and an
+ * anonymous caller gets the whole catalogue.
  *
- * `validateQuery`'s first consumer in this application - it was written at step 1 and
- * has had no endpoint taking a query string until now.
+ * This comment used to say "no auth middleware at all, not even attachUserIfPresent:
+ * the result does not vary by who is asking". That stopped being true when a signed-in
+ * visitor's OWN listings were excluded from the results - you cannot book your own
+ * item (FR-502), so offering it among things you can rent is a dead end. Identity is
+ * now read when it is there and ignored when it is not.
+ *
+ * The repository still restricts to PUBLISHED as its first condition, so there is no
+ * caller for whom a draft could appear either way.
  */
-router.get("/", validateQuery(browseQuerySchema), getBrowse);
+router.get("/", attachUserIfPresent, validateQuery(browseQuerySchema), getBrowse);
 
 // ---- Owner's own ----
 //

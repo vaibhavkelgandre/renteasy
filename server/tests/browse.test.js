@@ -454,3 +454,55 @@ describe("GET /listings/:id/quote — FR-400 to FR-404", () => {
     expect(response.body.message).toMatch(/no price/i);
   });
 });
+
+describe("your own listings are not things you can rent — FR-502 on the browse side", () => {
+  it("hides them from you, and shows them to everybody else", async () => {
+    const owner = await verifiedUser(app);
+    const stranger = await verifiedUser(app);
+
+    await publish(owner.agent, { title: "My own tripod" });
+    await publish(stranger.agent, { title: "Somebody else's tripod" });
+
+    const mine = await owner.agent.get("/api/listings");
+    const titles = mine.body.data.listings.map((listing) => listing.title);
+    expect(titles).toContain("Somebody else's tripod");
+    expect(titles).not.toContain("My own tripod");
+
+    // The exclusion is about who is ASKING, not about the listing — it is perfectly
+    // visible to the other party and to a signed-out visitor.
+    const theirs = await stranger.agent.get("/api/listings");
+    expect(theirs.body.data.listings.map((l) => l.title)).toContain("My own tripod");
+    expect((await browse()).body.data.listings).toHaveLength(2);
+  });
+
+  it("counts what it shows — the pager must not promise a row it withheld", async () => {
+    const owner = await verifiedUser(app);
+    const stranger = await verifiedUser(app);
+
+    await publish(owner.agent, { title: "Mine one" });
+    await publish(owner.agent, { title: "Mine two" });
+    await publish(stranger.agent, { title: "Theirs" });
+
+    // `total` comes from `count(*) OVER ()`, so it is computed by the same statement
+    // as the page and cannot disagree with it — but only as long as the exclusion is
+    // a WHERE condition. Filter the rows in JS afterwards and this is 3 with one row,
+    // which renders a pager offering a second page that is empty.
+    const mine = await owner.agent.get("/api/listings");
+    expect(mine.body.data.total).toBe(1);
+    expect(mine.body.data.listings).toHaveLength(1);
+
+    expect((await browse()).body.data.total).toBe(3);
+  });
+
+  it("still applies alongside another filter", async () => {
+    const owner = await verifiedUser(app);
+    const stranger = await verifiedUser(app);
+
+    await publish(owner.agent, { title: "Mine in Pune", city: "Pune" });
+    await publish(stranger.agent, { title: "Theirs in Pune", city: "Pune" });
+
+    const filtered = await owner.agent.get("/api/listings?city=Pune");
+    expect(filtered.body.data.total).toBe(1);
+    expect(filtered.body.data.listings[0].title).toBe("Theirs in Pune");
+  });
+});
