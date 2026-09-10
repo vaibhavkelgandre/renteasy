@@ -113,7 +113,7 @@ export function AvailabilityCalendar({ unavailable, bookableFrom }) {
           // most common way to end up staring at an empty calendar wondering why.
           disabled={month <= startOfMonth(today)}
           aria-label="Previous month"
-          className="grid size-9 place-items-center rounded-lg text-stone-500 hover:bg-stone-100 disabled:opacity-30 disabled:hover:bg-transparent"
+          className="grid size-8 place-items-center rounded-lg text-stone-500 hover:bg-stone-100 disabled:opacity-30 disabled:hover:bg-transparent"
         >
           ‹
         </button>
@@ -126,7 +126,7 @@ export function AvailabilityCalendar({ unavailable, bookableFrom }) {
           type="button"
           onClick={() => setMonth(addMonths(month, 1))}
           aria-label="Next month"
-          className="grid size-9 place-items-center rounded-lg text-stone-500 hover:bg-stone-100"
+          className="grid size-8 place-items-center rounded-lg text-stone-500 hover:bg-stone-100"
         >
           ›
         </button>
@@ -177,7 +177,7 @@ export function AvailabilityCalendar({ unavailable, bookableFrom }) {
               // The tone alone carries this for a sighted reader; a screen reader
               // gets the same fact as words.
               aria-label={`${day.getDate()} ${formatMonth(month)} — ${label}`}
-              className={`grid h-10 place-items-center rounded-lg text-sm ${tone}`}
+              className={`grid h-9 place-items-center rounded-lg text-sm ${tone}`}
             >
               <span className="tabular-nums">{day.getDate()}</span>
             </div>
@@ -185,7 +185,7 @@ export function AvailabilityCalendar({ unavailable, bookableFrom }) {
         })}
       </div>
 
-      <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
+      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
         {showsKind ? (
           <>
             <Key className="bg-brand-100" label="Booked" />

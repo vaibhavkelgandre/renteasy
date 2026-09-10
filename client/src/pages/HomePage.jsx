@@ -40,6 +40,32 @@ const UNITS = [
   { value: "monthly", label: "Per month" },
 ];
 
+/**
+ * One class string for every control in the sidebar.
+ *
+ * They sit in a 212px column one under another, so any difference in height or radius
+ * between two of them reads as a mistake rather than as variety — which is exactly
+ * what happened when each carried its own copy of these classes in the old filter row.
+ */
+const CONTROL =
+  "h-10 w-full rounded-lg border border-stone-300 bg-white px-2.5 text-sm text-stone-900";
+
+/**
+ * A visible label above a filter control.
+ *
+ * The old row had none — every control was labelled only by `aria-label` and by
+ * whatever its default option happened to say, so "All categories" and "Anywhere" had
+ * to double as their own headings. A column has the room to say what each one is.
+ */
+function FilterField({ label, children }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-stone-600">{label}</span>
+      {children}
+    </label>
+  );
+}
+
 /** The rate to show on a tile, for the unit currently being browsed. */
 function tileRate(listing, unit) {
   const chosen = RATE_UNITS.find((rate) => rate.key.startsWith(unit));
@@ -63,7 +89,10 @@ function ListingTile({ listing, unit }) {
         to={`/listings/${listing.id}`}
         className="group block h-full overflow-hidden rounded-2xl border border-stone-200 bg-white transition-shadow hover:shadow-md"
       >
-        <div className="aspect-[4/3] overflow-hidden bg-stone-100">
+        {/* 16:10, not 4:3. Three tiles to a row now that the filters take a column,
+            so each is wider — and at 4:3 a wider tile is also a TALLER one, which put
+            barely two rows on screen. A shallower crop keeps the price visible. */}
+        <div className="aspect-[16/10] overflow-hidden bg-stone-100">
           {listing.coverUrl ? (
             <img
               src={listing.coverUrl}
@@ -80,7 +109,7 @@ function ListingTile({ listing, unit }) {
           )}
         </div>
 
-        <div className="p-4">
+        <div className="p-3.5">
           <h3 className="truncate font-medium text-stone-900">{listing.title}</h3>
           <p className="mt-1 truncate text-sm text-stone-500">
             {listing.city ? `${listing.locality}, ${listing.city}` : listing.category_name}
@@ -236,146 +265,160 @@ export function HomePage() {
         </Button>
       </form>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <select
-          value={category}
-          onChange={(event) => apply({ category: event.target.value })}
-          aria-label="Category"
-          className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900"
-        >
-          <option value="">All categories</option>
-          {categories.map((option) => (
-            <option key={option.slug} value={option.slug}>
-              {option.name}
-            </option>
-          ))}
-        </select>
+      <div className="mt-5 grid gap-6 lg:grid-cols-[212px_1fr] lg:items-start">
+        {/* THE FILTERS ARE A COLUMN, NOT A ROW ACROSS THE TOP.
+            As a row they pushed the first result off the screen — six controls plus a
+            date range is two wrapped lines before anything you can actually rent. In a
+            column they cost width, which this grid has, instead of height, which it
+            does not. Sticky, so narrowing a search does not mean scrolling back up. */}
+        <aside className="lg:sticky lg:top-20 space-y-3" aria-label="Filters">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold text-stone-900">Filter</h2>
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={() => setParams(new URLSearchParams())}
+                className="text-xs font-medium text-brand-700 underline underline-offset-2"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
 
-        <select
-          value={city}
-          onChange={(event) => apply({ city: event.target.value })}
-          aria-label="City"
-          className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900"
-        >
-          <option value="">Anywhere</option>
-          {cities.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+          <FilterField label="Category">
+            <select
+              value={category}
+              onChange={(event) => apply({ category: event.target.value })}
+              aria-label="Category"
+              className={CONTROL}
+            >
+              <option value="">All categories</option>
+              {categories.map((option) => (
+                <option key={option.slug} value={option.slug}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </FilterField>
 
-        <select
-          value={unit}
-          onChange={(event) => apply({ unit: event.target.value })}
-          aria-label="Rental period"
-          className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900"
-        >
-          {UNITS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          <FilterField label="Where">
+            <select
+              value={city}
+              onChange={(event) => apply({ city: event.target.value })}
+              aria-label="City"
+              className={CONTROL}
+            >
+              <option value="">Anywhere</option>
+              {cities.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </FilterField>
 
-        {/* onBlur rather than onChange: committing on every keystroke would push a
-            history entry and fire a request per character. */}
-        <input
-          type="text"
-          inputMode="decimal"
-          defaultValue={maxRupees}
-          onBlur={(event) => apply({ maxRupees: event.target.value.trim() })}
-          placeholder="Max ₹"
-          aria-label="Maximum price"
-          className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 placeholder:text-stone-400"
-        />
+          <FilterField label="Rate shown">
+            <select
+              value={unit}
+              onChange={(event) => apply({ unit: event.target.value })}
+              aria-label="Rental period"
+              className={CONTROL}
+            >
+              {UNITS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </FilterField>
 
-        <select
-          value={sort}
-          onChange={(event) => apply({ sort: event.target.value })}
-          aria-label="Sort by"
-          className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900"
-        >
-          {SORTS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
+          <FilterField label="Max price">
+            {/* onBlur rather than onChange: committing on every keystroke would push a
+                history entry and fire a request per character. */}
+            <input
+              type="text"
+              inputMode="decimal"
+              defaultValue={maxRupees}
+              onBlur={(event) => apply({ maxRupees: event.target.value.trim() })}
+              placeholder="Any"
+              aria-label="Maximum price"
+              className={`${CONTROL} placeholder:text-stone-400`}
+            />
+          </FilterField>
 
-      {/* Its own row, not a seventh cell in the grid above. A date range is two
-          coupled inputs that only mean anything together, and dropping them into a
-          grid of independent dropdowns invites filling in one and wondering why
-          nothing happened. */}
-      <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
-        <div>
-          <label
-            htmlFor="available-from"
-            className="block text-xs font-medium text-stone-600"
-          >
-            Free from
-          </label>
-          <input
-            id="available-from"
-            type="date"
-            value={from}
-            min={todayValue}
-            onChange={(event) => apply({ from: event.target.value })}
-            className="mt-1 h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-900"
-          />
-        </div>
+          {/* Grouped and boxed, unlike the filters above it. A date range is two
+              coupled inputs that mean nothing apart, and standing them next to five
+              independent dropdowns invites filling in one and wondering why nothing
+              happened — which the caption then answers. */}
+          <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+            <div className="flex items-baseline justify-between">
+              <h3 className="text-xs font-medium text-stone-600">Free between</h3>
+              {(from || to) && (
+                <button
+                  type="button"
+                  onClick={() => apply({ from: "", to: "" })}
+                  className="text-xs font-medium text-brand-700 underline underline-offset-2"
+                >
+                  Any dates
+                </button>
+              )}
+            </div>
 
-        <div>
-          <label htmlFor="available-to" className="block text-xs font-medium text-stone-600">
-            Until
-          </label>
-          <input
-            id="available-to"
-            type="date"
-            value={to}
-            // Never before the start. The server refuses an inverted range anyway;
-            // this stops the reader constructing one in the first place.
-            min={from || todayValue}
-            onChange={(event) => apply({ to: event.target.value })}
-            className="mt-1 h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-900"
-          />
-        </div>
+            <label htmlFor="available-from" className="sr-only">
+              Free from
+            </label>
+            <input
+              id="available-from"
+              type="date"
+              value={from}
+              min={todayValue}
+              onChange={(event) => apply({ from: event.target.value })}
+              className={`${CONTROL} mt-2`}
+            />
 
-        <p className="py-2 text-xs text-stone-500">
-          {from && to
-            ? "Showing only what is free for the whole range."
-            : "Pick both dates to see only what is free."}
-        </p>
+            <label htmlFor="available-to" className="sr-only">
+              Until
+            </label>
+            <input
+              id="available-to"
+              type="date"
+              value={to}
+              // Never before the start. The server refuses an inverted range anyway;
+              // this stops the reader constructing one in the first place.
+              min={from || todayValue}
+              onChange={(event) => apply({ to: event.target.value })}
+              className={`${CONTROL} mt-2`}
+            />
 
-        {(from || to) && (
-          <button
-            type="button"
-            onClick={() => apply({ from: "", to: "" })}
-            className="py-2 text-xs font-medium text-brand-700 underline underline-offset-2"
-          >
-            Any dates
-          </button>
-        )}
-      </div>
+            {!(from && to) && (
+              <p className="mt-2 text-xs leading-snug text-stone-500">
+                Pick both dates to see only what is free.
+              </p>
+            )}
+          </div>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-stone-500" role="status">
-          {state.status === "loading"
-            ? "Searching…"
-            : `${state.total} ${state.total === 1 ? "listing" : "listings"}`}
-        </p>
+          <FilterField label="Sort by">
+            <select
+              value={sort}
+              onChange={(event) => apply({ sort: event.target.value })}
+              aria-label="Sort by"
+              className={CONTROL}
+            >
+              {SORTS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+        </aside>
 
-        {hasFilters && (
-          <button
-            type="button"
-            onClick={() => setParams(new URLSearchParams())}
-            className="text-sm font-medium text-brand-700 underline underline-offset-2"
-          >
-            Clear filters
-          </button>
-        )}
-      </div>
+        <div className="min-w-0">
+          <p className="text-sm text-stone-500" role="status">
+            {state.status === "loading"
+              ? "Searching…"
+              : `${state.total} ${state.total === 1 ? "listing" : "listings"}`}
+          </p>
 
       {state.status === "failed" && (
         <Alert tone="error" className="mt-4">
@@ -405,7 +448,7 @@ export function HomePage() {
       )}
 
       {state.listings.length > 0 && (
-        <ul className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <ul className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {state.listings.map((listing) => (
             <ListingTile key={listing.id} listing={listing} unit={unit} />
           ))}
@@ -437,6 +480,8 @@ export function HomePage() {
           </Button>
         </nav>
       )}
+        </div>
+      </div>
     </Page>
   );
 }

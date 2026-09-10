@@ -81,7 +81,7 @@ function Gallery({ photos, title }) {
 
   if (photos.length === 0) {
     return (
-      <div className="grid aspect-[4/3] place-items-center rounded-2xl bg-stone-100 text-stone-400">
+      <div className="grid aspect-[3/2] place-items-center rounded-2xl bg-stone-100 text-stone-400">
         No photos
       </div>
     );
@@ -98,7 +98,10 @@ function Gallery({ photos, title }) {
           // camera's name adds nothing when read aloud — but an empty alt on the ONLY
           // image would leave a screen reader with nothing at all.
           alt={title}
-          className="aspect-[4/3] w-full object-cover"
+          // 3:2, not 4:3. This image is the tallest thing on the page and it sets
+          // where everything under it begins; a quarter less height brings the
+          // description and the handover details above the fold.
+          className="aspect-[3/2] w-full object-cover"
           // Reserving the real dimensions stops the page jumping as it loads, which is
           // why width and height are stored alongside the storage id.
           width={current.width}
@@ -163,20 +166,20 @@ function Availability({ listingId }) {
   const { unavailable, noticePeriodHours, bookableFrom } = state.data;
 
   return (
-    <section className="mt-10 border-t border-stone-200 pt-8">
-      <h2 className="text-lg font-semibold text-stone-900">Availability</h2>
+    <Card className="mt-4 p-5">
+      <h2 className="font-semibold text-stone-900">Availability</h2>
 
       {noticePeriodHours != null && (
-        <p className="mt-1 text-sm leading-relaxed text-stone-600">
+        <p className="mb-3 mt-1 text-sm leading-relaxed text-stone-600">
           The owner needs notice — the earliest you can start is{" "}
           <span className="font-medium text-stone-900">{formatWhen(bookableFrom)}</span>.
         </p>
       )}
 
-      <div className="mt-4 max-w-sm">
+      <div className="mt-3">
         <AvailabilityCalendar unavailable={unavailable} bookableFrom={bookableFrom} />
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -274,8 +277,6 @@ export function ListingDetailPage() {
             )}
           </dl>
 
-          <Availability listingId={listing.id} />
-
           <p className="mt-6 text-sm text-stone-500">
             Listed by{" "}
             <Link
@@ -288,9 +289,16 @@ export function ListingDetailPage() {
         </div>
 
         {/* Sticky on a wide screen: the price is what a reader keeps referring back to
-            while scrolling a long description. */}
-        <div className="lg:sticky lg:top-24 lg:self-start">
+            while scrolling a long description.
+
+            THE CALENDAR BELONGS HERE, NOT UNDER THE DESCRIPTION. "Is it free that
+            weekend?" is the same question as "what does it cost?" — one decision, and
+            the first version made you scroll past the whole description to answer half
+            of it. Below the rate card rather than above it, because the price is what
+            brought them to the page. */}
+        <div className="lg:sticky lg:top-20 lg:self-start">
           <RateCard listing={listing} />
+          <Availability listingId={listing.id} />
         </div>
       </div>
     </Page>

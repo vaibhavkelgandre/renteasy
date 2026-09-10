@@ -74,20 +74,27 @@ function NoticePeriod({ listingId, value, onSaved }) {
     }
   }
 
+  // Inside the calendar's card rather than a card of its own: it is the second half
+  // of "when can this be booked", and as a separate panel it added its own heading,
+  // padding and border to say one sentence.
   return (
-    <Card className="p-6">
-      <h2 className="font-semibold text-stone-900">Notice you need</h2>
-      <p className="mt-1 text-sm leading-relaxed text-stone-600">
-        Nobody can book a start time sooner than this. Useful if the item is in
-        storage, or needs charging.
+    <div className="mt-4 border-t border-stone-200 pt-4">
+      <label
+        htmlFor="notice-period"
+        className="text-sm font-medium text-stone-900"
+      >
+        Notice you need
+      </label>
+      <p className="mt-0.5 text-sm leading-snug text-stone-600">
+        Nobody can book a start sooner than this.
       </p>
 
       <select
+        id="notice-period"
         value={value == null ? "" : String(value)}
         onChange={(event) => save(event.target.value)}
         disabled={saving}
-        aria-label="Notice needed before a rental starts"
-        className="mt-4 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 disabled:opacity-60"
+        className="mt-2 h-10 w-full rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-900 disabled:opacity-60"
       >
         {NOTICE_CHOICES.map((choice) => (
           <option key={choice.value} value={choice.value}>
@@ -101,7 +108,7 @@ function NoticePeriod({ listingId, value, onSaved }) {
           {error}
         </Alert>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -137,14 +144,14 @@ function BlackoutForm({ listingId, onAdded }) {
   const set = (key) => (event) => setForm((prev) => ({ ...prev, [key]: event.target.value }));
 
   return (
-    <Card className="p-6">
+    <Card className="p-5">
       <h2 className="font-semibold text-stone-900">Block out dates</h2>
-      <p className="mt-1 text-sm leading-relaxed text-stone-600">
+      <p className="mt-0.5 text-sm leading-snug text-stone-600">
         Times you need it yourself. Nobody can request these.
       </p>
 
-      <form onSubmit={submit} className="mt-4 space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+      <form onSubmit={submit} className="mt-3 space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Field
             label="From"
             type="datetime-local"
@@ -295,14 +302,16 @@ export function ListingAvailabilityPage() {
         </Link>
       }
     >
-      <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-        <div className="space-y-6">
-          <Card className="p-6">
-            <AvailabilityCalendar
-              unavailable={availability.unavailable}
-              bookableFrom={availability.bookableFrom}
-            />
-          </Card>
+      {/* The calendar column is content-sized, not half the page. At `1fr 1fr` a
+          336px calendar sat in a 560px cell with 200px of white space beside it,
+          while the forms opposite wrapped — and the whole thing was tall enough to
+          scroll for no reason. */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(300px,340px)_1fr] lg:items-start">
+        <Card className="p-5">
+          <AvailabilityCalendar
+            unavailable={availability.unavailable}
+            bookableFrom={availability.bookableFrom}
+          />
 
           <NoticePeriod
             listingId={id}
@@ -312,20 +321,30 @@ export function ListingAvailabilityPage() {
             // second definition of the same rule.
             onSaved={load}
           />
-        </div>
 
-        <div className="space-y-6">
+          {availability.noticePeriodHours != null && (
+            <p className="mt-2 text-xs leading-snug text-stone-500">
+              Earliest start right now:{" "}
+              <span className="font-medium text-stone-700">
+                {formatWhen(availability.bookableFrom)}
+              </span>
+              .
+            </p>
+          )}
+        </Card>
+
+        <div className="space-y-4">
           <BlackoutForm listingId={id} onAdded={load} />
 
-          <Card className="p-6">
+          <Card className="p-5">
             <h2 className="font-semibold text-stone-900">Dates you have blocked</h2>
 
             {blackouts.length === 0 ? (
-              <p className="mt-2 text-sm leading-relaxed text-stone-600">
+              <p className="mt-0.5 text-sm leading-snug text-stone-600">
                 None yet. Everything not already booked is available.
               </p>
             ) : (
-              <ul className="mt-2 divide-y divide-stone-200">
+              <ul className="mt-1 divide-y divide-stone-200">
                 {blackouts.map((blackout) => (
                   <BlackoutRow
                     key={blackout.id}
@@ -337,13 +356,6 @@ export function ListingAvailabilityPage() {
               </ul>
             )}
           </Card>
-
-          {availability.noticePeriodHours != null && (
-            <p className="text-sm leading-relaxed text-stone-500">
-              With your notice period, the earliest anybody can start a rental right
-              now is <span className="font-medium text-stone-700">{formatWhen(availability.bookableFrom)}</span>.
-            </p>
-          )}
         </div>
       </div>
     </Page>

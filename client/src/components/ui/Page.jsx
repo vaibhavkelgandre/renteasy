@@ -46,16 +46,16 @@ export function Page({ width = "full", title, description, actions, back, classN
     // `mx-auto` centres the reading column inside AppLayout's wider one; at `full` it
     // is a no-op because the two widths match.
     <div className={`mx-auto w-full ${WIDTHS[width]} ${className}`}>
-      {back && <div className="mb-4">{back}</div>}
+      {back && <div className="mb-2">{back}</div>}
 
       {title && (
         // Wraps rather than truncating: a long title with an action button beside it
         // should drop the button to the next line, not clip the title.
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold tracking-tight text-stone-900">{title}</h1>
             {description && (
-              <p className="mt-2 max-w-2xl leading-relaxed text-stone-600">{description}</p>
+              <p className="mt-1 max-w-2xl leading-relaxed text-stone-600">{description}</p>
             )}
           </div>
           {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
