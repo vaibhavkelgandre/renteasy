@@ -82,6 +82,38 @@ npm run dev:client   # client :5174
 
 `npm test` at the root runs everything — server suite, then client.
 
+### Demo data
+
+```
+cd server && npm run seed          # plan only, writes nothing
+cd server && npm run seed -- --yes # ten people, fourteen listings, some bookings
+```
+
+Sign in as any of them — `asha@renteasy.test`, `rohan@renteasy.test`, … — with
+**`DemoRent!2345`**. The `.test` TLD is reserved and never resolves, so none of these addresses can
+receive mail even by accident.
+
+Four things about `seedDemo.js` are deliberate and worth not undoing:
+
+- **Users are inserted directly; everything else goes through the services.** Registering ten
+  accounts through the API would send ten real verification emails, via Brevo, to addresses that do
+  not exist — and ten hard bounces is a measurable hit to a sending domain's reputation. A user row
+  has no derived state, so a direct write costs nothing. Listings, photos and bookings do, so they
+  go through `listingService`/`bookingService` and are subject to every rule the app enforces. Seed
+  data the application itself would refuse is worse than none: it makes the product look broken
+  when it is the fixture that is wrong.
+- **It is idempotent, and it RESUMES.** An existing account is left completely alone. A listing is
+  skipped only when it is already `PUBLISHED` — not merely when a row with that title exists —
+  because the first run died between creating a listing and photographing it, and a check on the
+  title alone declared that half-built draft finished. Sixteen network calls make a partial failure
+  the normal case.
+- **Photos come from loremflickr at 640×480**, 20–90KB each, 755KB for the whole catalogue. They go
+  through the real Cloudinary pipeline, on an account shared with another project. **Search terms
+  may not contain spaces** — loremflickr answers `403` with an 895-byte error page, which is why
+  the script refuses such a term up front rather than discovering it mid-upload.
+- **It refuses to run when `NODE_ENV=production` or `DATABASE_URL` is set**, unless given
+  `--allow-production`. It writes rows *and* uploads images, neither of which has an undo.
+
 In development **every emailed link prints to the server console** — verification and password reset
 alike. That is the only place they exist: the database stores only a hash. To send real mail instead
 (locally too), set `BREVO_API_KEY` and `MAIL_FROM` in `server/.env`; the boot banner reports which

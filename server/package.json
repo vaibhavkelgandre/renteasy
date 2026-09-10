@@ -7,6 +7,7 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test": "vitest run",
+    "seed": "node src/scripts/seedDemo.js",
     "migrate": "node src/scripts/runMigrations.js",
     "migrate:status": "node src/scripts/runMigrations.js --status",
     "migrate:test": "node -r dotenv/config src/scripts/runMigrations.js dotenv_config_path=.env.test"
