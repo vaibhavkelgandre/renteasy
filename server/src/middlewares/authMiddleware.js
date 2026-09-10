@@ -93,3 +93,46 @@ export function requireAdmin(req, _res, next) {
   if (!req.user.is_admin) return next(forbidden());
   next();
 }
+
+/**
+ * Attaches `req.user` IF there is a valid session, and never refuses.
+ *
+ * For endpoints that are public but behave differently for the owner of a record — a
+ * listing page is the case this was written for: anyone may read a published listing,
+ * while a DRAFT is visible only to whoever wrote it.
+ *
+ * THE DIFFERENCE FROM `requireAuth` IS THAT EVERY FAILURE IS SILENT. No cookie, an
+ * expired token, a tampered one, a deleted account: all of them simply mean "no user",
+ * because on a marketplace most visitors genuinely have no account and being signed out
+ * is not an error worth reporting.
+ *
+ * THAT SILENCE IS ALSO WHY IT IS NOT A SECURITY BOUNDARY. It answers "who is this, if
+ * anyone?" and never "may they?" — so every route using it must still make its own
+ * authorization decision from `req.user`, treating null as a stranger. Reaching for
+ * this instead of `requireAuth` on a route that needs a session would silently make
+ * that route public.
+ *
+ * @param {import("express").Request} req
+ * @param {import("express").Response} _res
+ * @param {import("express").NextFunction} next
+ * @returns {Promise<void>}
+ */
+export async function attachUserIfPresent(req, _res, next) {
+  try {
+    const token = req.cookies?.[AUTH_COOKIE];
+    if (!token) return next();
+
+    const userId = verifyAuthToken(token);
+    if (!userId) return next();
+
+    const user = await findUserById(userId);
+    if (user && user.status === "ACTIVE") req.user = user;
+
+    next();
+  } catch {
+    // Even an unexpected failure resolves to "no user" rather than a 500. This runs on
+    // public pages, and a database hiccup while reading an optional session must not
+    // take down a page that does not need one.
+    next();
+  }
+}

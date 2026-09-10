@@ -24,6 +24,7 @@ import cookieParser from "cookie-parser";
 import { healthRoutes } from "./routes/healthRoutes.js";
 import { authRoutes } from "./routes/authRoutes.js";
 import { profileRoutes, publicUserRoutes } from "./routes/profileRoutes.js";
+import { listingRoutes } from "./routes/listingRoutes.js";
 import { sendError } from "./utils/response.js";
 
 const app = express();
@@ -62,6 +63,7 @@ app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/users", publicUserRoutes);
+app.use("/api/listings", listingRoutes);
 
 // ---- 404 ----
 // Reached only when no route above matched. Must come after every route and before

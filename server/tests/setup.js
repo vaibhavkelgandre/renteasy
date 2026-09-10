@@ -68,7 +68,13 @@ const { query, closeDatabase } = await import("../src/config/db.js");
  * with "relation employees does not exist", which looks like a broken schema rather
  * than a broken test harness.
  */
-const TABLES = ["users", "email_verification_tokens", "password_reset_tokens"];
+// `categories` is NOT in this list, for the same class of reason. It is SEEDED BY
+// MIGRATION 004 rather than created by tests, so truncating it would empty the lookup
+// table for the whole run and every later test would fail with "that is not a category
+// we have" — which reads as a broken service rather than a broken harness.
+//
+// `listing_photos` is absent because it CASCADEs from `listings`.
+const TABLES = ["users", "email_verification_tokens", "password_reset_tokens", "listings"];
 
 // 4. A clean database before each test.
 //

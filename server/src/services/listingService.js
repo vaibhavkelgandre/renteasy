@@ -1,0 +1,452 @@
+/**
+ * Listings: create, edit, publish, photos, delete.
+ *
+ * Spec: docs/features/04-listings.md.
+ *
+ * THE AUTHORIZATION MODEL IS A RELATIONSHIP, NOT A ROLE (FR-111). There is no "listing
+ * manager" permission to hold. The only question ever asked is "is this caller the
+ * owner of this row?", answered next to the data. The same person lists a camera and
+ * rents a bike, so nothing about them is a property of their account.
+ */
+
+import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
+import {
+  findActiveCategories,
+  findCategoryBySlug,
+  insertListing,
+  findListingById,
+  findListingsByOwner,
+  updateListing,
+  updateListingStatus,
+  deleteListing,
+  findPhotosForListing,
+  countPhotos,
+  insertPhotos,
+  deletePhoto,
+  reorderPhotos,
+} from "../repositories/listingRepository.js";
+import {
+  uploadListingPhoto,
+  destroyListingPhoto,
+  listingPhotoUrl,
+} from "../config/cloudinary.js";
+import { MAX_PHOTOS_PER_LISTING } from "../middlewares/uploadMiddleware.js";
+
+/**
+ * Fetches a listing and asserts the caller owns it.
+ *
+ * THE 403-VERSUS-404 SPLIT IS DELIBERATE, and follows the rule in utils/errors.js.
+ *
+ *   a PUBLISHED listing → 403. It is world-readable; the caller can see it exists by
+ *                         browsing. Pretending otherwise would be theatre.
+ *   a DRAFT listing     → 404. Nobody but the owner has any way to know it exists, and
+ *                         a 403 would confirm that this particular id is somebody's
+ *                         unpublished listing — which is exactly the fact a draft is
+ *                         for keeping private.
+ *
+ * @param {string} id
+ * @param {object} actor The session user.
+ * @returns {Promise<object>} The listing.
+ * @throws {AppError} 404 or 403.
+ */
+async function loadOwnListing(id, actor) {
+  const listing = await findListingById(id);
+  if (!listing) throw notFound("Listing not found");
+
+  if (listing.owner_id !== actor.id) {
+    if (listing.status === "PUBLISHED") throw forbidden("This listing belongs to someone else.");
+    throw notFound("Listing not found");
+  }
+
+  return listing;
+}
+
+/**
+ * Resolves a category slug to its id, or explains what is available.
+ *
+ * @param {string} slug
+ * @returns {Promise<string>} The category id.
+ * @throws {AppError} 400 — safe to be specific, since the category list is public.
+ */
+async function resolveCategory(slug) {
+  const category = await findCategoryBySlug(slug);
+  if (!category) {
+    throw badRequest("That is not a category we have.", { category: "Choose a category from the list" });
+  }
+  return category.id;
+}
+
+/** The public category list — FR-102. */
+export async function listCategories() {
+  return findActiveCategories();
+}
+
+/**
+ * Attaches photo URLs to a listing.
+ *
+ * URLS ARE BUILT ON READ, NEVER STORED. Postgres holds a `storage_id`; every size the
+ * product needs is a string derived from it here. That is what makes changing the grid
+ * thumbnail an edit to one function rather than a migration across every row — and
+ * what would make a move to another provider survivable.
+ *
+ * @param {object} listing
+ * @param {object[]} photos
+ * @returns {object}
+ */
+function withPhotoUrls(listing, photos) {
+  return {
+    ...listing,
+    photos: photos.map((photo) => ({
+      id: photo.id,
+      sortOrder: photo.sort_order,
+      width: photo.width,
+      height: photo.height,
+      thumbUrl: listingPhotoUrl(photo.storage_id, "thumb"),
+      url: listingPhotoUrl(photo.storage_id, "detail"),
+    })),
+  };
+}
+
+/**
+ * Creates a listing — FR-100. ALWAYS a draft.
+ *
+ * Deliberately requires almost nothing beyond a title, description, category and
+ * condition. A draft is by definition half-finished; refusing to save one without a
+ * price would mean somebody who wants to think about the price overnight cannot start
+ * at all. Everything else is checked when they try to publish.
+ *
+ * @param {object} actor The session user.
+ * @param {object} input
+ * @returns {Promise<object>} The created listing.
+ * @throws {AppError} 400 for an unknown category.
+ */
+export async function createListing(actor, input) {
+  const categoryId = await resolveCategory(input.category);
+
+  const listing = await insertListing({ ...input, categoryId, ownerId: actor.id });
+  return withPhotoUrls(listing, []);
+}
+
+/**
+ * The caller's own listings, drafts included — FR-115.
+ *
+ * @param {object} actor
+ * @returns {Promise<object[]>}
+ */
+export async function listOwnListings(actor) {
+  const rows = await findListingsByOwner(actor.id);
+
+  return rows.map((row) => ({
+    ...row,
+    coverUrl: row.cover_storage_id ? listingPhotoUrl(row.cover_storage_id, "thumb") : null,
+  }));
+}
+
+/**
+ * One listing, for whoever is asking.
+ *
+ * A DRAFT or UNPUBLISHED listing is visible ONLY to its owner, and answers 404 to
+ * everyone else — including signed-out visitors. Not 403: a stranger has no more reason
+ * to learn that an id belongs to somebody's unpublished listing than to learn it
+ * belongs to nothing at all.
+ *
+ * @param {string} id
+ * @param {object|null} actor The session user, or null for a visitor.
+ * @returns {Promise<object>}
+ * @throws {AppError} 404.
+ */
+export async function getListing(id, actor) {
+  const listing = await findListingById(id);
+  if (!listing) throw notFound("Listing not found");
+
+  const isOwner = actor && listing.owner_id === actor.id;
+  if (listing.status !== "PUBLISHED" && !isOwner) throw notFound("Listing not found");
+
+  return withPhotoUrls(listing, await findPhotosForListing(id));
+}
+
+/**
+ * Edits a listing — FR-108. Allowed while draft, published or unpublished.
+ *
+ * Editing a PUBLISHED listing is deliberately permitted rather than forcing an
+ * unpublish first: correcting a typo in a live listing is the most ordinary thing an
+ * owner does.
+ *
+ * **FR-112 lives elsewhere, and this is the place to say so.** "Changing the rate card
+ * never alters an already-confirmed booking" cannot be enforced here, because a booking
+ * must copy the agreed price into itself at the moment it is confirmed. This function
+ * changing a rate is precisely the event FR-112 exists to survive. The guarantee will
+ * be a column on `bookings`, not a refusal here.
+ *
+ * @param {string} id
+ * @param {object} actor
+ * @param {object} fields
+ * @returns {Promise<object>}
+ * @throws {AppError} 404 / 403 / 400.
+ */
+export async function editListing(id, actor, fields) {
+  const existing = await loadOwnListing(id, actor);
+
+  const patch = { ...fields };
+  if (fields.category !== undefined) {
+    patch.categoryId = await resolveCategory(fields.category);
+    delete patch.category;
+  }
+
+  // The merged row is what gets validated, never the patch alone. A body carrying only
+  // `maxDurationHours` can invert the range against a stored minimum the schema never
+  // sees — the usual shape of this bug.
+  const min = patch.minDurationHours !== undefined ? patch.minDurationHours : existing.min_duration_hours;
+  const max = patch.maxDurationHours !== undefined ? patch.maxDurationHours : existing.max_duration_hours;
+  if (min != null && max != null && max < min) {
+    throw badRequest("The longest rental cannot be shorter than the shortest.", {
+      maxDurationHours: "Must be at least the minimum duration",
+    });
+  }
+
+  const updated = await updateListing(id, patch);
+  if (!updated) throw notFound("Listing not found");
+
+  return withPhotoUrls(updated, await findPhotosForListing(id));
+}
+
+/**
+ * Everything standing between a listing and being visible — FR-107.
+ *
+ * Collected in ONE function on purpose. A publish gate whose conditions are scattered
+ * across a controller, a validator and two services is one nobody can audit, and this
+ * is the rule that decides what strangers can see.
+ *
+ * @param {object} listing
+ * @param {object} actor
+ * @param {number} photoCount
+ * @returns {string[]} Human-readable reasons it cannot go live. Empty means it can.
+ */
+function publishBlockers(listing, actor, photoCount) {
+  const blockers = [];
+
+  // The first real consumer of "an unverified account cannot list" (FR-005), which has
+  // been a design intention with nothing enforcing it since step 1.
+  if (!actor.email_verified_at) blockers.push("Confirm your email address");
+
+  if (photoCount < 1) blockers.push("Add at least one photo");
+
+  const hasRate =
+    listing.hourly_rate_paise != null ||
+    listing.daily_rate_paise != null ||
+    listing.monthly_rate_paise != null;
+  if (!hasRate) blockers.push("Set at least one price — hourly, daily or monthly");
+
+  if (!listing.city || !listing.locality) blockers.push("Say roughly where the item is");
+
+  return blockers;
+}
+
+/**
+ * Reports what a listing still needs, without attempting anything.
+ *
+ * Exists so the owner's edit screen can show the checklist continuously rather than
+ * only discovering it by pressing Publish and being refused. Same function as the gate
+ * itself, so the two cannot drift.
+ *
+ * @param {string} id
+ * @param {object} actor
+ * @returns {Promise<{ canPublish: boolean, blockers: string[] }>}
+ */
+export async function getPublishReadiness(id, actor) {
+  const listing = await loadOwnListing(id, actor);
+  const blockers = publishBlockers(listing, actor, await countPhotos(id));
+  return { canPublish: blockers.length === 0, blockers };
+}
+
+/**
+ * Publishes a listing — FR-107.
+ *
+ * @param {string} id
+ * @param {object} actor
+ * @returns {Promise<object>}
+ * @throws {AppError} 409 listing every unmet condition at once.
+ */
+export async function publishListing(id, actor) {
+  const listing = await loadOwnListing(id, actor);
+
+  if (listing.status === "PUBLISHED") return withPhotoUrls(listing, await findPhotosForListing(id));
+
+  const blockers = publishBlockers(listing, actor, await countPhotos(id));
+
+  if (blockers.length > 0) {
+    // EVERY blocker, not the first. Reporting them one at a time turns publishing into
+    // a guessing game where each fix reveals the next obstacle.
+    throw conflict(`This listing is not ready yet: ${blockers.join("; ")}.`, {
+      publish: blockers.join("; "),
+    });
+  }
+
+  const published = await updateListingStatus(id, "PUBLISHED");
+  return withPhotoUrls(published, await findPhotosForListing(id));
+}
+
+/**
+ * Takes a listing out of browse — FR-109.
+ *
+ * **The half of FR-109 about confirmed bookings cannot be built yet**, because there is
+ * no bookings table. When there is, unpublishing must leave them untouched: somebody
+ * who has already agreed to rent this camera on Saturday is owed that camera on
+ * Saturday, regardless of the owner having second thoughts about advertising it.
+ *
+ * @param {string} id
+ * @param {object} actor
+ * @returns {Promise<object>}
+ */
+export async function unpublishListing(id, actor) {
+  await loadOwnListing(id, actor);
+  const updated = await updateListingStatus(id, "UNPUBLISHED");
+  return withPhotoUrls(updated, await findPhotosForListing(id));
+}
+
+/**
+ * Deletes a listing — FR-110.
+ *
+ * **The condition FR-110 actually states — "only when no active or upcoming booking
+ * exists" — is NOT enforced, because there is no bookings table to consult.** Deletion
+ * is currently unconditional. This is a named gap rather than an oversight, and it is
+ * the first thing to change when step 6 lands.
+ *
+ * Remote assets are deleted AFTER the row, and a failure there is logged rather than
+ * raised: deleting the row is the operation the user asked for, and a leftover image
+ * costs storage, whereas a failed remote delete that undid everything would leave them
+ * unable to delete their own listing at all.
+ *
+ * @param {string} id
+ * @param {object} actor
+ * @returns {Promise<void>}
+ */
+export async function removeListing(id, actor) {
+  await loadOwnListing(id, actor);
+
+  const photos = await findPhotosForListing(id);
+  await deleteListing(id);
+
+  for (const photo of photos) {
+    await destroyListingPhoto(photo.storage_id);
+  }
+}
+
+/**
+ * Uploads photos and attaches them — FR-105, FR-106.
+ *
+ * ORDER OF OPERATIONS IS THE WHOLE DESIGN, and it is the order in
+ * docs/6.media-storage.md §5:
+ *
+ *   1. the caller owns the listing
+ *   2. the cap is not already reached
+ *   3. every file is really an image  (done by the middleware, before this)
+ *   4. upload to the provider
+ *   5. insert the rows
+ *
+ * Uploading AFTER every check and BEFORE the insert means a rejected request never
+ * creates a remote asset, and a failed upload never leaves a half-attached listing —
+ * nothing has touched Postgres at that point.
+ *
+ * @param {string} id
+ * @param {object} actor
+ * @param {Express.Multer.File[]} files
+ * @returns {Promise<object>} The listing, with its photos.
+ * @throws {AppError} 400 if it would exceed the cap.
+ */
+export async function addPhotos(id, actor, files) {
+  await loadOwnListing(id, actor);
+
+  if (files.length === 0) {
+    throw badRequest("Choose at least one photo.", { photos: "Choose at least one photo" });
+  }
+
+  const existingCount = await countPhotos(id);
+  if (existingCount + files.length > MAX_PHOTOS_PER_LISTING) {
+    const room = MAX_PHOTOS_PER_LISTING - existingCount;
+    throw badRequest(
+      room === 0
+        ? `This listing already has the maximum of ${MAX_PHOTOS_PER_LISTING} photos.`
+        : `You can add ${room} more photo${room === 1 ? "" : "s"} to this listing.`,
+      { photos: `Room for ${room} more` }
+    );
+  }
+
+  const uploaded = [];
+  try {
+    for (const file of files) {
+      const asset = await uploadListingPhoto({ buffer: file.buffer, listingId: id });
+      // The SNIFFED type, never the client's claim — see uploadMiddleware.
+      uploaded.push({ ...asset, mimeType: file.detectedMimeType ?? asset.mimeType });
+    }
+  } catch (error) {
+    // Anything already uploaded in this batch is now an orphan with no row pointing at
+    // it. Clean up before rethrowing rather than leaving it for the sweep.
+    for (const asset of uploaded) await destroyListingPhoto(asset.storageId);
+    throw error;
+  }
+
+  await insertPhotos(id, uploaded);
+
+  const listing = await findListingById(id);
+  return withPhotoUrls(listing, await findPhotosForListing(id));
+}
+
+/**
+ * Removes one photo.
+ *
+ * @param {string} id
+ * @param {string} photoId
+ * @param {object} actor
+ * @returns {Promise<object>}
+ * @throws {AppError} 404 if the photo is not on this listing.
+ */
+export async function removePhoto(id, photoId, actor) {
+  await loadOwnListing(id, actor);
+
+  const storageId = await deletePhoto(id, photoId);
+  if (!storageId) throw notFound("Photo not found");
+
+  // Fire and forget after the row is gone, for the same reason as deleting a listing.
+  void destroyListingPhoto(storageId);
+
+  const listing = await findListingById(id);
+  return withPhotoUrls(listing, await findPhotosForListing(id));
+}
+
+/**
+ * Reorders photos — FR-106. Position 0 becomes the cover.
+ *
+ * The request must name EVERY photo of the listing, exactly once. A partial reorder
+ * would leave the unnamed ones at positions that now collide, and "what happened to the
+ * rest?" has no good answer — so it is refused rather than guessed at.
+ *
+ * @param {string} id
+ * @param {object} actor
+ * @param {string[]} photoIds
+ * @returns {Promise<object>}
+ * @throws {AppError} 400 if the set does not match.
+ */
+export async function reorderListingPhotos(id, actor, photoIds) {
+  await loadOwnListing(id, actor);
+
+  const current = await findPhotosForListing(id);
+  const currentIds = new Set(current.map((photo) => photo.id));
+  const wanted = new Set(photoIds);
+
+  const sameSet =
+    photoIds.length === current.length &&
+    wanted.size === photoIds.length &&
+    photoIds.every((photoId) => currentIds.has(photoId));
+
+  if (!sameSet) {
+    throw badRequest("List every photo of this listing exactly once.", {
+      photoIds: "Must contain each of this listing's photos exactly once",
+    });
+  }
+
+  await reorderPhotos(id, photoIds);
+
+  const listing = await findListingById(id);
+  return withPhotoUrls(listing, await findPhotosForListing(id));
+}
