@@ -19,6 +19,9 @@ import { ResetPasswordPage } from "./pages/ResetPasswordPage.jsx";
 import { ProfilePage } from "./pages/ProfilePage.jsx";
 import { PublicProfilePage } from "./pages/PublicProfilePage.jsx";
 import { TermsPage } from "./pages/TermsPage.jsx";
+import { MyListingsPage } from "./pages/MyListingsPage.jsx";
+import { ListingFormPage } from "./pages/ListingFormPage.jsx";
+import { ListingDetailPage } from "./pages/ListingDetailPage.jsx";
 import { Button } from "./components/ui/Button.jsx";
 import { Logo } from "./components/Logo.jsx";
 
@@ -33,6 +36,10 @@ export function App() {
             a visitor with no account. */}
         <Route path="/u/:id" element={<PublicProfilePage />} />
 
+        {/* Public. Browsing needs no account — a published listing is world-readable,
+            and the API answers 404 for a draft to everyone but its owner. */}
+        <Route path="/listings/:id" element={<ListingDetailPage />} />
+
         {/* Public, and outside every guard. It is linked from the registration form,
             which is read by someone who by definition has no account — and it is what
             they are agreeing to, so it must never be behind a sign-in. */}
@@ -42,6 +49,12 @@ export function App() {
             ever used RequireAuth. Nested inside AppLayout so the header stays put. */}
         <Route element={<RequireAuth />}>
           <Route path="/profile" element={<ProfilePage />} />
+
+          {/* Owner-only screens. The guard is convenience, not security — every one of
+              these calls an endpoint that checks ownership against the row itself. */}
+          <Route path="/listings/mine" element={<MyListingsPage />} />
+          <Route path="/listings/new" element={<ListingFormPage />} />
+          <Route path="/listings/:id/edit" element={<ListingFormPage />} />
         </Route>
       </Route>
 
