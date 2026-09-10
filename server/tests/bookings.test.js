@@ -522,4 +522,27 @@ describe("a listing that has been booked", () => {
     expect(response.status).toBe(409);
     expect(response.body.message).toMatch(/unpublish/i);
   });
+
+  it("can be unpublished, and the confirmed booking survives it — FR-109", async () => {
+    // The other half of the sentence above. Unpublishing is what an owner is told to
+    // do instead of deleting, so it had better not be a quieter way of doing the same
+    // damage — a renter with a confirmed booking must not find it gone because the
+    // owner tidied their listings page.
+    const { owner, renter, listingId } = await marketplace();
+    const booking = await requestBooking(renter.agent, listingId);
+    await act(owner.agent, booking.id, "ACCEPT");
+
+    expect((await owner.agent.post(`/api/listings/${listingId}/unpublish`)).status).toBe(200);
+
+    // Still there, still ACCEPTED, and still readable BY THE RENTER — who is not the
+    // owner and so cannot see an unpublished listing at all. That is the case worth
+    // asserting: reading the booking must not depend on the listing being visible.
+    const after = await renter.agent.get(`/api/bookings/${booking.id}`);
+    expect(after.status).toBe(200);
+    expect(after.body.data.booking.status).toBe("ACCEPTED");
+
+    // And the dates stay claimed. An unpublished listing is hidden, not cancelled, so
+    // the exclusion constraint must still be holding them.
+    expect((await renter.agent.get("/api/bookings?side=renter")).body.data.bookings).toHaveLength(1);
+  });
 });
