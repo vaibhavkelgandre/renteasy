@@ -22,6 +22,7 @@ import { Button } from "../components/ui/Button.jsx";
 import { Alert } from "../components/ui/Alert.jsx";
 import { Page } from "../components/ui/Page.jsx";
 import { api } from "../lib/api.js";
+import { useAuth } from "../context/AuthContext.jsx";
 import { toDateInput } from "../lib/dates.js";
 import { formatPaise, parseRupeesToPaise, RATE_UNITS } from "../lib/money.js";
 
@@ -87,12 +88,14 @@ function ListingTile({ listing, unit }) {
     <li>
       <Link
         to={`/listings/${listing.id}`}
-        className="group block h-full overflow-hidden rounded-2xl border border-stone-200 bg-white transition-shadow hover:shadow-md"
+        // The whole tile is one link. A card where only the title is clickable is a
+        // card people click and nothing happens on.
+        className="group flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-stone-300 hover:shadow-xl hover:shadow-stone-900/10"
       >
         {/* 16:10, not 4:3. Three tiles to a row now that the filters take a column,
             so each is wider — and at 4:3 a wider tile is also a TALLER one, which put
             barely two rows on screen. A shallower crop keeps the price visible. */}
-        <div className="aspect-[16/10] overflow-hidden bg-stone-100">
+        <div className="relative aspect-[16/10] overflow-hidden bg-stone-100">
           {listing.coverUrl ? (
             <img
               src={listing.coverUrl}
@@ -100,24 +103,45 @@ function ListingTile({ listing, unit }) {
               // Lazy: a full grid is 24 image requests and only the first few are on
               // screen.
               loading="lazy"
-              className="size-full object-cover transition-transform group-hover:scale-[1.02]"
+              // A slower, larger zoom than the old 1.02. At 200ms and 2% the effect
+              // was too small to register as intentional and just looked like a
+              // rendering wobble; either commit to it or leave the image still.
+              className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
             <div className="grid size-full place-items-center text-sm text-stone-400">
               No photo
             </div>
           )}
+
+          {/* The category, over the photograph rather than under the title. It is the
+              least important line on the tile but the one most useful for scanning a
+              grid, and on the image it costs no vertical space at all.
+
+              A translucent white pill over an unknown photograph needs the blur: on a
+              dark image plain white/80 goes muddy, and on a busy one the text stops
+              being readable. */}
+          <span className="absolute left-2.5 top-2.5 rounded-full bg-white/85 px-2.5 py-1 text-xs font-medium text-stone-700 backdrop-blur-sm">
+            {listing.category_name}
+          </span>
         </div>
 
-        <div className="p-3.5">
-          <h3 className="truncate font-medium text-stone-900">{listing.title}</h3>
+        {/* `flex-1` plus `mt-auto` on the price: tiles in a row are the same height,
+            and without this the price sits directly under a one-line title on one
+            card and a two-line title on the next, so the row of prices ziggurats. */}
+        <div className="flex flex-1 flex-col p-4">
+          <h3 className="line-clamp-2 font-medium leading-snug text-stone-900 group-hover:text-brand-700">
+            {listing.title}
+          </h3>
+
           <p className="mt-1 truncate text-sm text-stone-500">
             {listing.city ? `${listing.locality}, ${listing.city}` : listing.category_name}
           </p>
+
           {rate && (
-            <p className="mt-2 font-semibold text-stone-900">
-              {formatPaise(rate.amount)}
-              <span className="font-normal text-stone-500">/{rate.short}</span>
+            <p className="mt-auto pt-3 text-stone-900">
+              <span className="tabular text-lg font-semibold">{formatPaise(rate.amount)}</span>
+              <span className="text-sm font-normal text-stone-500"> / {rate.short}</span>
             </p>
           )}
         </div>
@@ -128,6 +152,10 @@ function ListingTile({ listing, unit }) {
 
 export function HomePage() {
   const [params, setParams] = useSearchParams();
+
+  // Only to decide whether to explain the exclusion — the server does the excluding,
+  // from the session, so a stale value here can never change what is shown.
+  const { user } = useAuth();
 
   // Local, not `toISOString().slice(0, 10)` — east of UTC that yields tomorrow after
   // the afternoon, which would make today unselectable.
@@ -240,39 +268,67 @@ export function HomePage() {
   const lastOffset = Math.max(0, Math.floor((state.total - 1) / PAGE_SIZE) * PAGE_SIZE);
 
   return (
-    <Page
-      title="Rent almost anything, nearby"
-      description="By the hour, the day or the month — from people near you."
-    >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          apply({ q: searchDraft.trim() });
-        }}
-        className="flex gap-2"
-        role="search"
-      >
-        <input
-          type="search"
-          value={searchDraft}
-          onChange={(event) => setSearchDraft(event.target.value)}
-          placeholder="Camera, drill, bike…"
-          aria-label="Search listings"
-          className="h-12 w-full rounded-xl border border-stone-300 bg-white px-4 text-[15px] text-stone-900 placeholder:text-stone-400 focus:border-brand-600"
-        />
-        <Button type="submit" size="lg">
-          Search
-        </Button>
-      </form>
+    <Page>
+      {/* A HERO, rather than `Page`'s ordinary title block — the one place in the app
+          that earns one. This is the front door for a stranger with no account, and a
+          20px heading on plain stone above a row of dropdowns gave them nothing to
+          arrive at. The wash is `bg-hero` (index.css): a tint of the brand teal, kept
+          faint on purpose, because the photographs below are the colour on this page
+          and a saturated band would compete with the thing being sold.
 
-      <div className="mt-5 grid gap-6 lg:grid-cols-[212px_1fr] xl:grid-cols-[232px_1fr] lg:items-start">
+          Negative margins pull it out to the gutter and up under the header, so it
+          reads as a band across the page rather than a card sitting on one. The
+          matching padding puts the content back where the grid expects it. */}
+      <section className="bg-hero -mx-5 -mt-5 mb-8 rounded-b-3xl px-5 pb-8 pt-10 lg:-mx-8 lg:px-8">
+        <h1 className="max-w-2xl text-3xl font-semibold tracking-tight text-stone-900 sm:text-[2.5rem] sm:leading-[1.1]">
+          Rent almost anything, nearby
+        </h1>
+        <p className="mt-3 max-w-xl text-lg leading-relaxed text-stone-600">
+          By the hour, the day or the month — from people near you.
+        </p>
+
+        {/* The search box is the hero's own control, sized larger than any other
+            input in the app. It is the single thing most visitors will use first. */}
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            apply({ q: searchDraft.trim() });
+          }}
+          className="mt-6 flex max-w-2xl gap-2 rounded-2xl bg-white p-2 shadow-lg shadow-stone-900/5 ring-1 ring-stone-200/80"
+          role="search"
+        >
+          <input
+            type="search"
+            value={searchDraft}
+            onChange={(event) => setSearchDraft(event.target.value)}
+            placeholder="Camera, drill, bike…"
+            aria-label="Search listings"
+            // No border of its own — the wrapper is the visible field. Two nested
+            // borders is what made the old version look like a form control glued
+            // next to a button.
+            className="h-12 w-full rounded-xl bg-transparent px-3 text-[15px] text-stone-900 placeholder:text-stone-400 focus:outline-none"
+          />
+          <Button type="submit" size="md" className="shrink-0 px-6">
+            Search
+          </Button>
+        </form>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-[212px_1fr] xl:grid-cols-[232px_1fr] lg:items-start">
         {/* THE FILTERS ARE A COLUMN, NOT A ROW ACROSS THE TOP.
             As a row they pushed the first result off the screen — six controls plus a
             date range is two wrapped lines before anything you can actually rent. In a
             column they cost width, which this grid has, instead of height, which it
             does not. Sticky, so narrowing a search does not mean scrolling back up. */}
-        <aside className="lg:sticky lg:top-20 space-y-3" aria-label="Filters">
-          <div className="flex items-baseline justify-between">
+        <aside
+          // A panel, not loose controls on the page background. Six unrelated inputs
+          // floating on stone read as leftovers; the same six inside a card read as a
+          // tool. It is also what makes the sticky behaviour legible when the results
+          // scroll past it.
+          className="space-y-3 rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm lg:sticky lg:top-20"
+          aria-label="Filters"
+        >
+          <div className="flex items-baseline justify-between border-b border-stone-200 pb-3">
             <h2 className="text-sm font-semibold text-stone-900">Filter</h2>
             {hasFilters && (
               <button
@@ -414,11 +470,30 @@ export function HomePage() {
         </aside>
 
         <div className="min-w-0">
-          <p className="text-sm text-stone-500" role="status">
-            {state.status === "loading"
-              ? "Searching…"
-              : `${state.total} ${state.total === 1 ? "listing" : "listings"}`}
-          </p>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p className="text-sm font-medium text-stone-700" role="status">
+              {state.status === "loading"
+                ? "Searching…"
+                : `${state.total} ${state.total === 1 ? "listing" : "listings"}`}
+            </p>
+
+            {/* SAID OUT LOUD, because a silent exclusion is indistinguishable from a
+                bug. Your own items are gone from these results — you cannot book your
+                own listing (FR-502), so offering one here would be a dead end — and
+                without this line the first thing an owner notices is that the thing
+                they just published is missing. */}
+            {user && (
+              <p className="text-sm text-stone-500">
+                Your own items are in{" "}
+                <Link
+                  to="/listings/mine"
+                  className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
+                >
+                  Your listings
+                </Link>
+              </p>
+            )}
+          </div>
 
       {state.status === "failed" && (
         <Alert tone="error" className="mt-4">

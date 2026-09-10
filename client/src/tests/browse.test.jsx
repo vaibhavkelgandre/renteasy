@@ -121,7 +121,14 @@ describe("browsing without an account", () => {
     expect(prices).toHaveLength(2);
     // The unit is spelled out beside the amount, so ₹1,500 is not ambiguous between
     // an hour and a month.
-    expect(prices[0].textContent).toContain("/day");
+    //
+    // Asserted on the whole price LINE, not on the matched node. The amount and the
+    // unit are two spans now — the amount needs `tabular` and the unit must not have
+    // it — so the text query lands on the inner span and sees only "₹1,500".
+    // Whitespace is stripped for the same reason the line is used: the separator has
+    // already changed once ("₹1,500/day" to "₹1,500 / day"), and a test that fails on
+    // a space is testing the spacing rather than the rule.
+    expect(prices[0].closest("p").textContent.replace(/\s+/g, "")).toContain("/day");
   });
 
   it("reports the total, not the page size", async () => {

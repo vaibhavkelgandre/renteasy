@@ -99,9 +99,58 @@
   }
 }
 
+@layer components {
+  /**
+   * Every <select> in the app.
+   *
+   * A NATIVE SELECT IS THE SINGLE BIGGEST "OLD FASHIONED" TELL in an otherwise modern
+   * page: the browser draws its own chevron, its own inset border and its own height,
+   * none of which match anything else on screen, and all of which look like Windows
+   * 98 sitting inside a rounded card. Every other control here was styled; the selects
+   * were left native and dragged the whole page back with them.
+   *
+   * `appearance: none` removes the widget entirely, so the chevron has to be supplied
+   * — an inline data-URI SVG rather than an icon component, because a background
+   * image cannot be a React element and a file would be a request for 200 bytes.
+   * `padding-right` reserves the space so a long option never runs under it.
+   *
+   * Only the closed control is ours. The open dropdown list is drawn by the operating
+   * system and no CSS can reach it, which is the accepted cost of not shipping a
+   * custom listbox with its own keyboard handling and accessibility surface.
+   */
+  select {
+    @apply appearance-none bg-no-repeat pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2378716c' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.6rem center;
+    background-size: 1.1rem;
+  }
+
+  /* Date and time inputs have the same problem, one layer down: the picker button is
+   * the browser's, and in Chrome it is a small grey glyph that ignores the field's
+   * own colour. This at least tints it to match. */
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    @apply cursor-pointer opacity-60 transition-opacity;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator:hover,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+    @apply opacity-100;
+  }
+}
+
 @layer utilities {
   /* Every digit the same width, so a column of prices aligns instead of ragging. */
   .tabular {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* The warm wash behind the browse hero and the signed-out call to action.
+   * A tint of the brand teal over the stone ground, not a saturated block — the
+   * photographs are the colour on this page and a loud band would compete. */
+  .bg-hero {
+    background-image:
+      radial-gradient(60rem 22rem at 12% -10%, rgb(204 251 241 / 0.75), transparent 60%),
+      radial-gradient(48rem 20rem at 92% 0%, rgb(245 245 244 / 0.9), transparent 55%);
   }
 }

@@ -51,7 +51,7 @@ export function MyListingsPage() {
       title="Your listings"
       actions={
         <Button as={Link} to="/listings/new">
-          List something
+          List an item
         </Button>
       }
     >
@@ -81,54 +81,74 @@ export function MyListingsPage() {
       )}
 
       {state.status === "ready" && state.listings.length > 0 && (
-        <ul className="mt-8 space-y-3">
+        <ul className="mt-6 space-y-3">
           {state.listings.map((listing) => (
             <li key={listing.id}>
-              <Card className="overflow-hidden">
-                <Link
-                  to={`/listings/${listing.id}/edit`}
-                  className="flex gap-4 p-4 transition-colors hover:bg-stone-50"
-                >
-                  {/* Fixed box with a placeholder, so a listing with no photo yet does
-                      not collapse the row to a different height than its neighbours. */}
-                  <div className="size-20 shrink-0 overflow-hidden rounded-xl bg-stone-100">
-                    {listing.coverUrl ? (
-                      <img
-                        src={listing.coverUrl}
-                        alt=""
-                        className="size-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="grid size-full place-items-center text-xs text-stone-400">
-                        No photo
-                      </div>
-                    )}
+              {/* THE ROW IS NO LONGER ONE BIG LINK, and that is what fixed the layout
+                  rather than any amount of spacing. A whole-row anchor cannot contain
+                  the per-listing actions — nesting one anchor in another is invalid
+                  HTML and the browser silently drops the inner one — so Availability
+                  had to live in a strip underneath, stranded on its own line at the
+                  far right of an otherwise empty band.
+
+                  With the title as the link, the actions sit where they belong: in
+                  the row, at the end, next to the thing they act on. */}
+              <Card className="flex flex-wrap items-center gap-4 p-4 sm:flex-nowrap">
+                {/* Fixed box with a placeholder, so a listing with no photo yet does
+                    not collapse the row to a different height than its neighbours. */}
+                <div className="size-24 shrink-0 overflow-hidden rounded-xl bg-stone-100">
+                  {listing.coverUrl ? (
+                    <img
+                      src={listing.coverUrl}
+                      alt=""
+                      className="size-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="grid size-full place-items-center px-1 text-center text-xs text-stone-400">
+                      No photo
+                    </div>
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="truncate font-medium text-stone-900">
+                      <Link
+                        to={`/listings/${listing.id}/edit`}
+                        // `after:absolute inset-0` would make the whole card
+                        // clickable again and bring the nested-anchor problem back
+                        // with it. The title is the link; the buttons are buttons.
+                        className="hover:text-brand-700 hover:underline hover:underline-offset-2"
+                      >
+                        {listing.title}
+                      </Link>
+                    </h2>
+                    <StatusBadge status={listing.status} />
                   </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="truncate font-medium text-stone-900">{listing.title}</h2>
-                      <StatusBadge status={listing.status} />
-                    </div>
-                    <p className="mt-1 text-sm text-stone-500">{listing.category_name}</p>
-                    <div className="mt-1.5">
-                      <RateSummary listing={listing} />
-                    </div>
-                  </div>
-                </Link>
+                  <p className="mt-1 text-sm text-stone-500">{listing.category_name}</p>
 
-                {/* Outside the row's Link, not inside it: nesting one anchor in
-                    another is invalid HTML and browsers resolve it by ignoring the
-                    inner one, so the control would silently open the editor. */}
-                <div className="flex justify-end border-t border-stone-200 px-4 py-2">
+                  <div className="mt-1.5">
+                    <RateSummary listing={listing} />
+                  </div>
+                </div>
+
+                {/* `w-full sm:w-auto` — stacked under the row on a phone, inline
+                    beside it from `sm` up. Two small buttons squeezed against a
+                    thumbnail on a 360px screen is how a row becomes three lines of
+                    wrapped text. */}
+                <div className="flex w-full shrink-0 gap-2 sm:w-auto">
                   <Button
                     as={Link}
                     to={`/listings/${listing.id}/availability`}
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                   >
                     Availability
+                  </Button>
+                  <Button as={Link} to={`/listings/${listing.id}/edit`} variant="outline" size="sm">
+                    Edit
                   </Button>
                 </div>
               </Card>

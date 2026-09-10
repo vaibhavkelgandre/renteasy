@@ -33,42 +33,68 @@ const FULFILMENT_LABELS = {
   BOTH: "Pickup or delivery",
 };
 
-/** The rate card. The whole reason someone is on this page. */
+/**
+ * The rate card. The whole reason someone is on this page.
+ *
+ * ONE PRICE IS THE HEADLINE, the rest are a list. The first version rendered every
+ * rate at the same weight in a flat column, so a listing with three of them presented
+ * the reader with three equal numbers and no answer to "what does this cost" — which
+ * is the question they came with. The cheapest unit leads at full size; the others
+ * sit under it as alternatives.
+ */
 function RateCard({ listing }) {
   const rates = RATE_UNITS.filter((unit) => listing[unit.column] != null);
+  const [headline, ...alternatives] = rates;
 
   return (
-    <Card className="p-6">
-      <ul className="space-y-3">
-        {rates.map((unit) => (
-          <li key={unit.key} className="flex items-baseline justify-between gap-4">
-            <span className="text-stone-600">{unit.label}</span>
-            <span className="text-lg font-semibold text-stone-900">
-              {formatPaise(listing[unit.column])}
+    <Card className="overflow-hidden">
+      <div className="p-6">
+        {headline && (
+          <p className="flex items-baseline gap-1.5">
+            <span className="tabular text-3xl font-semibold tracking-tight text-stone-900">
+              {formatPaise(listing[headline.column])}
             </span>
-          </li>
-        ))}
-      </ul>
+            <span className="text-stone-500">/ {headline.short}</span>
+          </p>
+        )}
 
-      {listing.deposit_paise > 0 && (
-        <p className="mt-4 border-t border-stone-200 pt-4 text-sm text-stone-600">
-          Refundable deposit{" "}
-          <span className="font-medium text-stone-900">{formatPaise(listing.deposit_paise)}</span>
+        {alternatives.length > 0 && (
+          <ul className="mt-4 space-y-2 border-t border-stone-200 pt-4">
+            {alternatives.map((unit) => (
+              <li key={unit.key} className="flex items-baseline justify-between gap-4 text-sm">
+                <span className="text-stone-600">{unit.label}</span>
+                <span className="tabular font-medium text-stone-900">
+                  {formatPaise(listing[unit.column])}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {listing.deposit_paise > 0 && (
+          <p className="mt-4 flex items-baseline justify-between gap-4 border-t border-stone-200 pt-4 text-sm">
+            <span className="text-stone-600">Refundable deposit</span>
+            <span className="tabular font-medium text-stone-900">
+              {formatPaise(listing.deposit_paise)}
+            </span>
+          </p>
+        )}
+
+        {/* Booking exists now. The placeholder that used to say it did not has gone,
+            rather than being left to contradict a working button. */}
+        <Button as={Link} to={`/listings/${listing.id}/book`} size="lg" fullWidth className="mt-5">
+          Request to book
+        </Button>
+
+        <p className="mt-3 text-center text-sm text-stone-500">
+          Nothing is charged. The owner has 48 hours to reply.
         </p>
-      )}
+      </div>
 
-      {/* Booking exists now. The placeholder that used to say it did not has gone,
-          rather than being left to contradict a working button. */}
-      <Button as={Link} to={`/listings/${listing.id}/book`} size="lg" fullWidth className="mt-5">
-        Request to book
-      </Button>
-
-      <p className="mt-3 text-center text-sm text-stone-500">
-        Nothing is charged. The owner has 48 hours to reply.
-      </p>
-
-      {/* Still honest about what does not exist: negotiation is step 7. */}
-      <p className="mt-4 border-t border-stone-200 pt-4 text-sm leading-relaxed text-stone-500">
+      {/* Still honest about what does not exist: negotiation is step 7. On its own
+          tinted foot rather than as a fourth rule inside the card — it is a note
+          about the product, not another line of the price. */}
+      <p className="border-t border-stone-200 bg-stone-50 px-6 py-3 text-sm leading-relaxed text-stone-500">
         Price negotiation is not built yet — for now the rate card is the price.
       </p>
     </Card>
@@ -244,22 +270,26 @@ export function ListingDetailPage() {
         <div>
           <Gallery photos={listing.photos} title={listing.title} />
 
-          <h1 className="mt-6 text-2xl font-semibold tracking-tight text-stone-900">
+          <h1 className="mt-6 text-3xl font-semibold tracking-tight text-stone-900">
             {listing.title}
           </h1>
 
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-stone-500">
-            <span>{listing.category_name}</span>
-            <span aria-hidden="true">·</span>
-            <span>{CONDITION_LABELS[listing.condition]} condition</span>
+          {/* CHIPS, not a dot-separated grey line. Three facts run together in one
+              muted sentence are read as one blur; the same three as separate objects
+              are scanned. They are also the only colour on an otherwise grey block
+              of text. */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <span className="rounded-full bg-brand-50 px-3 py-1 font-medium text-brand-800">
+              {listing.category_name}
+            </span>
+            <span className="rounded-full bg-stone-100 px-3 py-1 text-stone-700">
+              {CONDITION_LABELS[listing.condition]} condition
+            </span>
             {listing.city && (
-              <>
-                <span aria-hidden="true">·</span>
-                {/* An area, never a street address — FR-113. */}
-                <span>
-                  {listing.locality}, {listing.city}
-                </span>
-              </>
+              // An area, never a street address — FR-113.
+              <span className="rounded-full bg-stone-100 px-3 py-1 text-stone-700">
+                {listing.locality}, {listing.city}
+              </span>
             )}
           </div>
 
