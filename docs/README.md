@@ -19,7 +19,7 @@ never renumbered and never reused.
 |---|---|---|
 | [0.product-overview.md](0.product-overview.md) | What the product is, the two-sided model, the hard problems | The shape of the product changes |
 | **[1.status.md](1.status.md)** | **Completed / pending, per step and per requirement. Plus "built but not wired to anything"** | **Every change — same commit** |
-| [2.api-documentation.md](2.api-documentation.md) | Every endpoint: method, auth, body, response, errors | **Any endpoint changes — same commit** |
+| [2.api-documentation/](2.api-documentation/README.md) | Every endpoint: method, auth, body, response, errors. **Split into a folder at 395 lines** — [auth](2.api-documentation/auth.md), [profile](2.api-documentation/profile.md), [listings](2.api-documentation/listings.md) | **Any endpoint changes — same commit** |
 | [3.db.md](3.db.md) | Every table, column, constraint and index, with reasoning | **Any migration is added — same commit** |
 | [4.non-functional-requirements.md](4.non-functional-requirements.md) | NFR-1..NFR-15 — cross-cutting, with honest status | An NFR advances |
 | [5.design-system.md](5.design-system.md) | Colours, type, layout, primitives, and the copy rules | Any new UI pattern |
@@ -34,6 +34,7 @@ never renumbered and never reused.
 - [02 — Password reset](features/02-password-reset.md) ✅ built
 - [03 — Profile, email change and account deletion](features/03-profile.md) ✅ built
 - [04 — Listings, the rate card and photos](features/04-listings.md) ✅ built
+- [05 — Browse, search and pagination](features/05-browse.md) ✅ built
 
 ## Four docs are not optional
 
@@ -41,7 +42,7 @@ A change that skips one is unfinished:
 
 - **`1.status.md`** — a tracker that lags is worse than none, because it gets trusted.
 - **`7.functional-requirements.md`** — mark a requirement done in the same commit that does it.
-- **`2.api-documentation.md`** — an undocumented endpoint cannot be reviewed or consumed.
+- **`2.api-documentation/`** — an undocumented endpoint cannot be reviewed or consumed.
 - **`3.db.md`** — a migration without an entry means reading SQL to understand the schema.
 - **`troubleshooting.md`** — so nothing is diagnosed twice.
 
