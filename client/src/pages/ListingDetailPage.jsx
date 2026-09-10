@@ -101,7 +101,11 @@ function Gallery({ photos, title }) {
           // 3:2, not 4:3. This image is the tallest thing on the page and it sets
           // where everything under it begins; a quarter less height brings the
           // description and the handover details above the fold.
-          className="aspect-[3/2] w-full object-cover"
+          //
+          // `max-h` on top of the ratio, because a ratio alone means a wider page is
+          // a taller photograph — at 1440px this box would be 640px deep and undo
+          // exactly what the 3:2 was for. Beyond the cap it crops rather than grows.
+          className="aspect-[3/2] max-h-[460px] w-full object-cover"
           // Reserving the real dimensions stops the page jumping as it loads, which is
           // why width and height are stored alongside the storage id.
           width={current.width}
@@ -231,7 +235,12 @@ export function ListingDetailPage() {
 
   return (
     <Page>
-      <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
+      {/* A FIXED sidebar, not a fraction of the page. At `1.4fr 1fr` the rate card
+          grew with the window and was 570px wide on a large monitor — a price, a
+          button and a calendar, none of which is better for being stretched. Pinning
+          it hands every extra pixel to the photograph and the description, which are
+          the things a wider screen actually helps. */}
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div>
           <Gallery photos={listing.photos} title={listing.title} />
 

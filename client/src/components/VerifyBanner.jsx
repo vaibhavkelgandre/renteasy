@@ -36,7 +36,7 @@ export function VerifyBanner() {
 
   return (
     <div className="border-b border-amber-200 bg-amber-50">
-      <div className="mx-auto flex max-w-6xl flex-col gap-3 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mx-auto flex max-w-content flex-col gap-3 px-5 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-8">
         <p className="text-sm leading-relaxed text-amber-900">
           {state === "sent" ? (
             <>

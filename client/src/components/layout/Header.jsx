@@ -25,7 +25,7 @@ export function Header() {
     // never lose the way out, and the blur keeps it feeling light rather than like a
     // solid bar clamped over the content.
     <header className="sticky top-0 z-40 border-b border-stone-200/80 bg-stone-50/90 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5">
+      <div className="mx-auto flex h-16 max-w-content items-center justify-between gap-4 px-5 lg:px-8">
         <Link to="/" aria-label="RentEasy home">
           <Logo size="sm" />
         </Link>

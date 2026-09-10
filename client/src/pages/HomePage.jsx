@@ -265,7 +265,7 @@ export function HomePage() {
         </Button>
       </form>
 
-      <div className="mt-5 grid gap-6 lg:grid-cols-[212px_1fr] lg:items-start">
+      <div className="mt-5 grid gap-6 lg:grid-cols-[212px_1fr] xl:grid-cols-[232px_1fr] lg:items-start">
         {/* THE FILTERS ARE A COLUMN, NOT A ROW ACROSS THE TOP.
             As a row they pushed the first result off the screen — six controls plus a
             date range is two wrapped lines before anything you can actually rent. In a
@@ -447,8 +447,14 @@ export function HomePage() {
         </Card>
       )}
 
+      {/* A FOURTH COLUMN AT THE WIDEST SIZE, not four wider cards. The container
+          going 1152px → 1440px hands this grid ~290px more, and spending it on the
+          existing three would make each card wider — which at a fixed aspect ratio
+          makes it TALLER too, so a wider page would show FEWER listings per screen
+          than the narrow one did. Another column is the only way the extra width
+          becomes more to look at. */}
       {state.listings.length > 0 && (
-        <ul className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {state.listings.map((listing) => (
             <ListingTile key={listing.id} listing={listing} unit={unit} />
           ))}

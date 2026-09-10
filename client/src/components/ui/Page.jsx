@@ -10,8 +10,9 @@
  *
  * Two widths, because one is genuinely not enough:
  *
- *   full     grids, lists, anything tabular. Fills AppLayout's 1152px.
- *   reading  forms and prose. A text input stretched to 1152px is unusable and a
+ *   full     grids, lists, anything tabular. Fills AppLayout's own column, whatever
+ *            `--container-content` currently says that is.
+ *   reading  forms and prose. A text input stretched to 1440px is unusable and a
  *            paragraph at that width is hard to track back to the next line — the
  *            typographic rule is roughly 60–75 characters.
  *
@@ -20,7 +21,7 @@
  */
 
 const WIDTHS = {
-  full: "max-w-6xl",
+  full: "max-w-content",
   reading: "max-w-2xl",
 };
 

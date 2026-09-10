@@ -48,6 +48,27 @@
    * of prices scannable instead of ragged. */
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo,
     Consolas, monospace;
+
+  /* ---- The content column ----
+   *
+   * ONE TOKEN, BECAUSE FOUR PLACES NEED THE SAME NUMBER: the header, the verification
+   * banner, `AppLayout`'s main, and `Page`'s `full` width. They were four hardcoded
+   * `max-w-6xl`s, so widening the content alone would have left the logo and the
+   * banner ending 150px short of it — a misalignment that reads as a rendering bug
+   * rather than as a width someone forgot.
+   *
+   * 1440px, up from 1152. The old value was chosen so a grid of product cards would
+   * not sprawl, and on a 1920px monitor it instead left ~380px of empty stone down
+   * each side while the cards it was protecting sat cramped three-across. 1440 is
+   * where the major marketplaces land for the same reason: wide enough that a laptop
+   * has no dead margin, capped so a 2560px display does not stretch a row of cards
+   * into a horizon.
+   *
+   * `--container-*` is the Tailwind v4 namespace behind `max-w-*`, so this is
+   * `max-w-content`. Deliberately NOT a `--breakpoint-*`: this is how wide the
+   * content may grow, not a point at which the layout changes.
+   */
+  --container-content: 1440px;
 }
 
 @layer base {

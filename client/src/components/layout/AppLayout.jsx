@@ -18,15 +18,19 @@ export function AppLayout() {
     <div className="flex min-h-full flex-col">
       <Header />
       <VerifyBanner />
-      {/* max-w-6xl (1152px), narrower than an admin tool's. A grid of product cards
-          reads better in a slightly tighter column than a data table does.
+      {/* `max-w-content` (1440px) — defined once in index.css, because the header
+          and the verification banner have to end at the same place this does.
+
+          The gutter grows with the screen (`px-5` → `px-8`): at 1440px of content a
+          five-pixel margin looks like the page is about to fall off the edge, while
+          on a phone anything more eats width the content actually needs.
 
           ASYMMETRIC PADDING, DELIBERATELY. `py-8` put 32px above the first thing on
           every page, on top of a 64px sticky header and the title block's own margin
           — around 215px of nothing before any content on a short page, which made
           screens scroll that have no business scrolling. Space at the BOTTOM costs
           nothing, because it is below the last thing rather than above the first. */}
-      <main className="mx-auto w-full max-w-6xl flex-1 px-5 pb-12 pt-5">
+      <main className="mx-auto w-full max-w-content flex-1 px-5 pb-12 pt-5 lg:px-8">
         <Outlet />
       </main>
     </div>

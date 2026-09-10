@@ -151,7 +151,11 @@ function BlackoutForm({ listingId, onAdded }) {
       </p>
 
       <form onSubmit={submit} className="mt-3 space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2">
+        {/* Three across at the widest size. With the page at 1440px this column is
+            ~1000px, and two date fields sharing it were 500px each — a date input
+            with 460px of empty space in it. The reason field joins the row rather
+            than the dates growing into the gap. */}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <Field
             label="From"
             type="datetime-local"
@@ -168,18 +172,21 @@ function BlackoutForm({ listingId, onAdded }) {
             error={error.fields.endsAt}
             required
           />
-        </div>
 
-        <Field
-          label="Reason"
-          optional
-          value={form.reason}
-          onChange={set("reason")}
-          error={error.fields.reason}
-          placeholder="Lending it to my brother"
-          hint="For your own reference. Renters never see this."
-          maxLength={200}
-        />
+          {/* In the same grid row, not under it. Below the dates it was a single
+              full-width input for a twenty-character note. */}
+          <Field
+            label="Reason"
+            optional
+            value={form.reason}
+            onChange={set("reason")}
+            error={error.fields.reason}
+            placeholder="Lending it to my brother"
+            hint="Only you see this."
+            maxLength={200}
+            className="sm:col-span-2 xl:col-span-1"
+          />
+        </div>
 
         {error.message && <Alert tone="error">{error.message}</Alert>}
 
