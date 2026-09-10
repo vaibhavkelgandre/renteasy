@@ -328,7 +328,37 @@ export async function removeListing(id, actor) {
   await loadOwnListing(id, actor);
 
   const photos = await findPhotosForListing(id);
-  await deleteListing(id);
+
+  try {
+    await deleteListing(id);
+  } catch (error) {
+    /**
+     * A booking references this listing (migration 006 uses ON DELETE RESTRICT).
+     *
+     * TWO CODES, AND THE DISTINCTION IS NOT ACADEMIC. `ON DELETE RESTRICT` raises
+     * **23001** (`restrict_violation`) the moment the delete is attempted, whereas the
+     * default `NO ACTION` defers the check to the end of the statement and raises
+     * **23503** (`foreign_key_violation`). Catching only the familiar 23503 — which is
+     * what this did first — lets a RESTRICT sail past into a 500.
+     *
+     * STRICTER THAN FR-110's WORDING, and deliberately. The requirement says a listing
+     * may be deleted "only when no active or upcoming booking exists", implying one
+     * with only old completed bookings could go. It cannot: a completed booking is the
+     * other party's record of what they rented and what they paid, and deleting the
+     * listing would leave that receipt referring to nothing. Same reasoning that makes
+     * account deletion soft.
+     *
+     * The owner's remedy is UNPUBLISH, which already hides it from browse — so the
+     * message names it rather than leaving them stuck.
+     */
+    if (error.code === "23001" || error.code === "23503") {
+      throw conflict(
+        "This listing has bookings, so it cannot be deleted. Unpublish it instead to hide it.",
+        { listing: "Has bookings — unpublish instead" }
+      );
+    }
+    throw error;
+  }
 
   for (const photo of photos) {
     await destroyListingPhoto(photo.storage_id);

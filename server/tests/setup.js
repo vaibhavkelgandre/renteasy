@@ -74,7 +74,7 @@ const { query, closeDatabase } = await import("../src/config/db.js");
 // we have" — which reads as a broken service rather than a broken harness.
 //
 // `listing_photos` is absent because it CASCADEs from `listings`.
-const TABLES = ["users", "email_verification_tokens", "password_reset_tokens", "listings"];
+const TABLES = ["users", "email_verification_tokens", "password_reset_tokens", "listings", "bookings"];
 
 // 4. A clean database before each test.
 //

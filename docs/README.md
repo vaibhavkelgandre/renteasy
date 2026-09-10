@@ -35,6 +35,7 @@ never renumbered and never reused.
 - [03 — Profile, email change and account deletion](features/03-profile.md) ✅ built
 - [04 — Listings, the rate card and photos](features/04-listings.md) ✅ built
 - [05 — Browse, search and pagination](features/05-browse.md) ✅ built
+- [06 — Bookings, the double-booking guard and the state machine](features/06-bookings.md) 🟡 API built
 
 ## Four docs are not optional
 

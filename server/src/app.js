@@ -25,6 +25,7 @@ import { healthRoutes } from "./routes/healthRoutes.js";
 import { authRoutes } from "./routes/authRoutes.js";
 import { profileRoutes, publicUserRoutes } from "./routes/profileRoutes.js";
 import { listingRoutes } from "./routes/listingRoutes.js";
+import { bookingRoutes } from "./routes/bookingRoutes.js";
 import { sendError } from "./utils/response.js";
 
 const app = express();
@@ -64,6 +65,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/users", publicUserRoutes);
 app.use("/api/listings", listingRoutes);
+app.use("/api/bookings", bookingRoutes);
 
 // ---- 404 ----
 // Reached only when no route above matched. Must come after every route and before
