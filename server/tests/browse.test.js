@@ -359,3 +359,98 @@ describe("route ordering", () => {
     expect((await request(app).get("/api/listings")).status).toBe(200);
   });
 });
+
+describe("GET /listings/:id/quote — FR-400 to FR-404", () => {
+  const RANGE = "?start=2026-10-01T00:00:00Z&end=2026-11-10T00:00:00Z"; // 40 days
+
+  it("prices a rental without an account", async () => {
+    const { agent } = await verifiedUser(app);
+    const id = await publish(agent, { dailyRatePaise: 80_000, monthlyRatePaise: 1_500_000 });
+
+    const response = await request(app).get(`/api/listings/${id}/quote${RANGE}`);
+
+    // The 40-day worked example: a month plus ten days, not 40 × the daily rate.
+    expect(response.status).toBe(200);
+    expect(response.body.data.quote.rentPaise).toBe(2_300_000);
+    expect(response.body.data.quote.lines).toHaveLength(2);
+  });
+
+  it("itemises, and keeps the deposit out of the rent", async () => {
+    const { agent } = await verifiedUser(app);
+    const id = await publish(agent, { dailyRatePaise: 80_000, depositPaise: 500_000 });
+
+    const { quote } = (
+      await request(app).get(
+        `/api/listings/${id}/quote?start=2026-10-01T00:00:00Z&end=2026-10-02T00:00:00Z`
+      )
+    ).body.data;
+
+    expect(quote.lines[0]).toMatchObject({ unit: "day", quantity: 1 });
+    expect(quote.rentPaise).toBe(80_000);
+    expect(quote.depositPaise).toBe(500_000);
+    expect(quote.renterTotalPaise).toBe(580_000);
+    // Commission comes out of the owner's side, so it never inflates what is quoted:
+    // the renter's total is exactly rent + deposit, with no trace of it.
+    expect(quote.commissionPaise).toBeGreaterThan(0);
+    expect(quote.renterTotalPaise).toBe(quote.rentPaise + quote.taxPaise + quote.depositPaise);
+    expect(quote.ownerPayoutPaise).toBe(quote.rentPaise - quote.commissionPaise);
+  });
+
+  it("reports a duration blocker instead of refusing to price it", async () => {
+    const { agent } = await verifiedUser(app);
+    const id = await publish(agent, { minDurationHours: 48 });
+
+    const response = await request(app).get(
+      `/api/listings/${id}/quote?start=2026-10-01T00:00:00Z&end=2026-10-01T06:00:00Z`
+    );
+
+    // Same shape as the publish checklist: somebody who cannot see the price cannot
+    // work out what to change.
+    expect(response.status).toBe(200);
+    expect(response.body.data.quote.rentPaise).toBeGreaterThan(0);
+    expect(response.body.data.blockers[0]).toMatch(/minimum rental of 2 days/);
+  });
+
+  it("has no blockers for a range within the listing's limits", async () => {
+    const { agent } = await verifiedUser(app);
+    const id = await publish(agent, { minDurationHours: 2, maxDurationHours: 720 });
+
+    const response = await request(app).get(
+      `/api/listings/${id}/quote?start=2026-10-01T00:00:00Z&end=2026-10-02T00:00:00Z`
+    );
+    expect(response.body.data.blockers).toEqual([]);
+  });
+
+  it("refuses an inverted range with a 400, not a 500", async () => {
+    const { agent } = await verifiedUser(app);
+    const id = await publish(agent);
+
+    const response = await request(app).get(
+      `/api/listings/${id}/quote?start=2026-10-02T00:00:00Z&end=2026-10-01T00:00:00Z`
+    );
+    expect(response.status).toBe(400);
+    expect(response.body.message).toMatch(/end after/i);
+  });
+
+  it("will not price a draft for a stranger, but will for its owner", async () => {
+    const { agent } = await verifiedUser(app);
+    // Priced deliberately: the bare draft fixture has no rate, and an unpriced listing
+    // answers 400 for everyone — which would hide the 404-versus-200 distinction this
+    // test exists to check.
+    const id = await draft(agent, { dailyRatePaise: 80_000 });
+
+    // Same rule as the detail page: a draft is invisible, so its price is too.
+    expect((await request(app).get(`/api/listings/${id}/quote${RANGE}`)).status).toBe(404);
+    expect((await agent.get(`/api/listings/${id}/quote${RANGE}`)).status).toBe(200);
+  });
+
+  it("refuses to price a listing with no rate at all", async () => {
+    const { agent } = await verifiedUser(app);
+    const id = await draft(agent);
+
+    // 400 rather than quoting ₹0, which would be a free camera.
+    const response = await agent.get(`/api/listings/${id}/quote${RANGE}`);
+    expect(response.status).toBe(400);
+    expect(response.body.message).toMatch(/no price/i);
+  });
+});

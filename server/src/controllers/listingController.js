@@ -21,6 +21,7 @@ import {
   reorderListingPhotos,
   browseListings,
   listBrowseCities,
+  quoteListing,
 } from "../services/listingService.js";
 import { assertRealImages } from "../middlewares/uploadMiddleware.js";
 import { sendSuccess } from "../utils/response.js";
@@ -201,6 +202,25 @@ export async function getBrowse(req, res, next) {
 export async function getCities(_req, res, next) {
   try {
     sendSuccess(res, { message: "OK", data: { cities: await listBrowseCities() } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/listings/:id/quote
+ *
+ * Public: the price is what somebody wants before deciding whether to sign up, and
+ * FR-401 requires it shown before booking.
+ *
+ * FR-404 — the quote is computed here and nowhere else. The client renders what this
+ * returns and has no arithmetic of its own, which is what makes "a client-supplied
+ * total is never trusted" structural rather than a rule somebody has to remember.
+ */
+export async function getQuote(req, res, next) {
+  try {
+    const quote = await quoteListing(req.validatedParams.id, req.user ?? null, req.validatedQuery);
+    sendSuccess(res, { message: "OK", data: quote });
   } catch (error) {
     next(error);
   }

@@ -146,3 +146,55 @@ same price have no defined order and the same row can appear on two pages.
 **Public.** The distinct cities that currently have something published — derived, not a stored
 list, which would go stale in both directions: offering places with nothing to rent and omitting the
 one somebody just listed in. A draft's city does not appear, for the same reason the draft does not.
+
+---
+
+## `GET /listings/:id/quote` — what a rental would cost
+
+**Public**, and side-effect free. `?start=` and `?end=` are ISO instants, because this product
+rents by the hour as well as the month and a bare date cannot express a six-hour rental.
+
+```json
+{ "success": true, "message": "OK",
+  "data": {
+    "quote": {
+      "requestedHours": 960, "coveredHours": 960,
+      "lines": [
+        { "unit": "month", "quantity": 1,  "unitPricePaise": 1500000, "subtotalPaise": 1500000 },
+        { "unit": "day",   "quantity": 10, "unitPricePaise": 80000,   "subtotalPaise": 800000 }
+      ],
+      "rentPaise": 2300000,
+      "taxPaise": 0, "taxBasisPoints": 0,
+      "depositPaise": 500000, "depositRefundable": true,
+      "renterTotalPaise": 2800000,
+      "commissionPaise": 230000, "commissionBasisPoints": 1000,
+      "ownerPayoutPaise": 2070000
+    },
+    "blockers": [],
+    "quotedAt": "2026-09-10T12:00:00.000Z"
+  } }
+```
+
+**The cheapest applicable combination, never a naive multiplication (FR-400).** Six hours are
+charged as a day when a day is cheaper than six hours; thirty days as a month; forty days as a
+month plus ten days. The three worked examples from
+[0.product-overview.md](../0.product-overview.md) §4 are pinned as tests.
+
+**Itemised (FR-401)** — units, the rate applied and the subtotal. A total on its own is unauditable
+by the person paying it.
+
+**Computed server-side and nowhere else (FR-404).** The client renders what this returns and has no
+arithmetic of its own, which makes "a client-supplied total is never trusted" structural rather than
+a rule somebody has to remember.
+
+**`coveredHours` can exceed `requestedHours`** — six hours billed as a day covers 24 — so the client
+can say so rather than leaving somebody to wonder why six hours cost a day's rate.
+
+**Commission is deducted from `ownerPayoutPaise`, never added to `renterTotalPaise`.** The quoted
+price is the price paid. Nothing collects it yet.
+
+**A duration outside the listing's own min/max returns `blockers`, not an error.** Same shape as the
+publish checklist: a caller who cannot see the price cannot work out what to change.
+
+`400` for an inverted range or a listing with no rate at all — quoting ₹0 for a camera would be
+worse than refusing. `404` for a draft, unless you own it.

@@ -186,3 +186,19 @@ export const browseQuerySchema = z.object({
       query.maxPricePaise >= query.minPricePaise,
     { message: "The maximum price cannot be below the minimum", path: ["maxPricePaise"] }
   );
+
+/**
+ * GET /api/listings/:id/quote — the query string.
+ *
+ * ISO instants, not dates: this product rents by the hour as well as the month, so
+ * "2026-09-10" alone cannot express a six-hour rental. `z.coerce.date()` accepts an
+ * ISO string and hands the service a real Date.
+ *
+ * The ordering rule is NOT checked here — `billableHours` refuses an inverted range
+ * with a message about rentals, and duplicating the rule would mean two places to keep
+ * in step.
+ */
+export const quoteQuerySchema = z.object({
+  start: z.coerce.date({ message: "Give a start date and time" }),
+  end: z.coerce.date({ message: "Give an end date and time" }),
+});

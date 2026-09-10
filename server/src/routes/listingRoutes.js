@@ -15,6 +15,7 @@ import {
   getCategories,
   getBrowse,
   getCities,
+  getQuote,
   postListing,
   getMyListings,
   getOneListing,
@@ -34,6 +35,7 @@ import {
   photoParamsSchema,
   reorderPhotosSchema,
   browseQuerySchema,
+  quoteQuerySchema,
 } from "../validators/listingValidator.js";
 import { validateBody, validateParams, validateQuery } from "../validators/validate.js";
 import { requireAuth, requireVerifiedEmail, attachUserIfPresent } from "../middlewares/authMiddleware.js";
@@ -129,6 +131,22 @@ router.patch(
 );
 
 router.delete("/:id/photos/:photoId", requireAuth, withPhotoIds, deleteOnePhoto);
+
+/**
+ * A QUOTE - FR-400 to FR-404. Public, and side-effect free.
+ *
+ * Before `/:id`, or the literal "quote" segment would never be reached.
+ *
+ * `attachUserIfPresent` only so an owner can price their own draft; for everyone else
+ * a draft answers 404 exactly as it does on the detail page.
+ */
+router.get(
+  "/:id/quote",
+  attachUserIfPresent,
+  withListingId,
+  validateQuery(quoteQuerySchema),
+  getQuote
+);
 
 // ---- Public, but owner-aware ----
 //

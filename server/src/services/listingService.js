@@ -33,6 +33,7 @@ import {
   listingPhotoUrl,
 } from "../config/cloudinary.js";
 import { MAX_PHOTOS_PER_LISTING } from "../middlewares/uploadMiddleware.js";
+import { buildQuote } from "../utils/quote.js";
 
 /**
  * Fetches a listing and asserts the caller owns it.
@@ -501,4 +502,71 @@ export async function browseListings(query) {
  */
 export async function listBrowseCities() {
   return findBrowseCities();
+}
+
+/**
+ * What a rental would cost — FR-400 to FR-404, FR-407.
+ *
+ * PUBLIC, and deliberately so: the price is the thing somebody wants before deciding
+ * whether to sign up, and FR-401 requires it shown "before booking". A draft is still
+ * hidden, via the same rule as `getListing`.
+ *
+ * RETURNS BLOCKERS RATHER THAN REFUSING when the dates fall outside the listing's own
+ * limits. The same shape as the publish checklist, and for the same reason: a caller
+ * who cannot see the price cannot work out what to change. "₹800, but this listing has
+ * a two-day minimum" is actionable; a bare 409 is a guessing game.
+ *
+ * `quotedAt` is stamped because FR-405 will refuse a stale quote at booking time, and
+ * that needs an age to measure.
+ *
+ * @param {string} id
+ * @param {object|null} actor
+ * @param {{ start: Date, end: Date }} range
+ * @returns {Promise<{ quote: object, blockers: string[], quotedAt: string }>}
+ * @throws {AppError} 404 for a hidden listing, 400 for an impossible range.
+ */
+export async function quoteListing(id, actor, { start, end }) {
+  const listing = await findListingById(id);
+  if (!listing) throw notFound("Listing not found");
+
+  const isOwner = actor && listing.owner_id === actor.id;
+  if (listing.status !== "PUBLISHED" && !isOwner) throw notFound("Listing not found");
+
+  let quote;
+  try {
+    quote = buildQuote({ start, end, listing });
+  } catch (error) {
+    // The util throws plain Errors for an inverted range or an unpriced listing. Both
+    // are client-fixable and safe to describe, so they become a 400 rather than
+    // reaching the generic handler as a 500.
+    throw badRequest(error.message, { end: error.message });
+  }
+
+  const blockers = [];
+  const { min_duration_hours: min, max_duration_hours: max } = listing;
+
+  // FR-504's rule, surfaced early. Checked against the REQUESTED hours rather than the
+  // covered ones: someone asking for six hours has asked for six, even though a day is
+  // what gets charged — refusing them against a two-hour minimum would be nonsense.
+  if (min != null && quote.requestedHours < min) {
+    blockers.push(`This listing has a minimum rental of ${describeHours(min)}`);
+  }
+  if (max != null && quote.requestedHours > max) {
+    blockers.push(`This listing has a maximum rental of ${describeHours(max)}`);
+  }
+
+  return { quote, blockers, quotedAt: new Date().toISOString() };
+}
+
+/** Hours as something a person would say. */
+function describeHours(hours) {
+  if (hours % (24 * 30) === 0) {
+    const months = hours / (24 * 30);
+    return `${months} month${months === 1 ? "" : "s"}`;
+  }
+  if (hours % 24 === 0) {
+    const days = hours / 24;
+    return `${days} day${days === 1 ? "" : "s"}`;
+  }
+  return `${hours} hour${hours === 1 ? "" : "s"}`;
 }
