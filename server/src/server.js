@@ -11,6 +11,7 @@ import { app } from "./app.js";
 import { assertEnvIsValid, env } from "./config/env.js";
 import { closeDatabase } from "./config/db.js";
 import { describeMailMode } from "./config/mailer.js";
+import { describeMediaMode } from "./config/cloudinary.js";
 
 // Validate BEFORE binding a port. The order matters: a process that fails validation
 // must never reach a state where it accepts a request it cannot serve. Getting this
@@ -33,6 +34,7 @@ const server = app.listen(env.port, () => {
   // the first person fails to receive a verification link — at which point it looks
   // like a bug in registration rather than a missing environment variable.
   console.log(`[mail] ${describeMailMode()}`);
+  console.log(`[media] ${describeMediaMode()}`);
 });
 
 /**

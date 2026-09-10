@@ -113,6 +113,19 @@ export const env = {
   brevoApiKey: (process.env.BREVO_API_KEY ?? "").trim(),
   mailFrom: (process.env.MAIL_FROM ?? "").trim(),
 
+  /**
+   * Image storage. Absent is legitimate: uploads simply refuse, loudly, and everything
+   * that is not a photo still works. Checked as three-of-three by
+   * `isMediaConfigured()`, because a half-filled environment fails with an
+   * authentication error indistinguishable from a wrong secret.
+   *
+   * Trimmed for the same reason as the mail key — a value pasted from a dashboard
+   * routinely carries a trailing newline.
+   */
+  cloudinaryCloudName: (process.env.CLOUDINARY_CLOUD_NAME ?? "").trim(),
+  cloudinaryApiKey: (process.env.CLOUDINARY_API_KEY ?? "").trim(),
+  cloudinaryApiSecret: (process.env.CLOUDINARY_API_SECRET ?? "").trim(),
+
   isProduction: process.env.NODE_ENV === "production",
   isTest: process.env.NODE_ENV === "test",
   isDevelopment: (process.env.NODE_ENV ?? "development") === "development",
