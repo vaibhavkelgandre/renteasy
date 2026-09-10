@@ -1,127 +1,367 @@
 /**
- * The landing page — public, and the same page whether you are signed in or not.
+ * Browse — the landing page, and the only way to find a listing you do not already
+ * have a link to. FR-300 to FR-309.
  *
- * DELIBERATELY HONEST ABOUT WHAT EXISTS. There are no listings yet, so there is no
- * fake grid of cameras: a placeholder tile reading "Canon EOS R6 — ₹800/day" is
- * indistinguishable from a real one, and a page of invented inventory teaches you to
- * distrust the real listings when they arrive.
+ * Public, and the same page whether you are signed in or not.
  *
- * So it explains the product and says plainly what is coming. When step 3 lands, the
- * category strip below becomes real links and this copy becomes a search bar.
+ * FILTER STATE LIVES IN THE URL, not in component state, and that is the decision this
+ * page turns on. A filtered view is then shareable, survives a refresh, and works with
+ * the back button — press back after opening a listing and you return to the same page
+ * of the same filtered result rather than to an unfiltered page one. It also means
+ * there is exactly one source of truth for what is being shown; a `useState` mirror
+ * alongside the URL is how those two drift apart.
+ *
+ * This page used to be an honest placeholder saying no listings existed and promising
+ * that "this copy becomes a search bar" when step 3 landed. It has.
  */
 
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
-import { useAuth } from "../context/AuthContext.jsx";
+import { Alert } from "../components/ui/Alert.jsx";
+import { api } from "../lib/api.js";
+import { formatPaise, parseRupeesToPaise, RATE_UNITS } from "../lib/money.js";
 
-/**
- * The categories the product is built around.
- *
- * V1 handles PORTABLE GOODS — cameras, bikes, tools, appliances. Property is
- * deliberately absent: it needs rental agreements, longer terms and local legal
- * compliance that would swamp everything else (docs/0.product-overview.md §7).
- */
-const CATEGORIES = [
-  { label: "Cameras & lenses", hint: "hourly or daily" },
-  { label: "Bikes & scooters", hint: "daily" },
-  { label: "Power tools", hint: "hourly or daily" },
-  { label: "Appliances", hint: "monthly" },
+/** Must match BROWSE_DEFAULT_LIMIT on the server, or the pager miscounts pages. */
+const PAGE_SIZE = 24;
+
+const SORTS = [
+  { value: "newest", label: "Newest first" },
+  { value: "price_asc", label: "Cheapest first" },
+  { value: "price_desc", label: "Most expensive" },
 ];
 
-/** What is not built yet, in build order. This panel disappears as each lands. */
-const COMING_NEXT = [
-  "Listings, with hourly, daily and monthly rates",
-  "Availability calendars, so nothing is double-booked",
-  "Booking requests and price negotiation",
-  "Handover, return and two-way reviews",
+const UNITS = [
+  { value: "hourly", label: "Per hour" },
+  { value: "daily", label: "Per day" },
+  { value: "monthly", label: "Per month" },
 ];
 
-export function HomePage() {
-  const { user, isVerified } = useAuth();
+/** The rate to show on a tile, for the unit currently being browsed. */
+function tileRate(listing, unit) {
+  const chosen = RATE_UNITS.find((rate) => rate.key.startsWith(unit));
+  if (chosen && listing[chosen.column] != null) {
+    return { amount: listing[chosen.column], short: chosen.short };
+  }
+
+  // Falls back to whatever rate exists rather than showing nothing: a listing that
+  // rents by the month is still worth seeing while browsing daily rates, and a tile
+  // with no price at all reads as broken.
+  const available = RATE_UNITS.find((rate) => listing[rate.column] != null);
+  return available ? { amount: listing[available.column], short: available.short } : null;
+}
+
+function ListingTile({ listing, unit }) {
+  const rate = tileRate(listing, unit);
 
   return (
-    <div className="space-y-10">
-      <section className="py-6 sm:py-10">
-        <h1 className="max-w-2xl text-3xl font-semibold leading-tight tracking-tight text-stone-900 sm:text-4xl">
-          Rent almost anything — by the hour, the day or the month.
-        </h1>
-        <p className="mt-4 max-w-xl leading-relaxed text-stone-600">
-          A camera for the weekend. A drill for an afternoon. A water purifier for a
-          year. Borrow what you need from people nearby, and earn from the things you
-          already own but rarely use.
-        </p>
-
-        {/* The rate example, in the app's mono/tabular treatment.
-            NOT decoration: the cheapest-applicable-rate rule is the product's least
-            obvious behaviour, and showing three prices side by side is how someone
-            grasps it before they ever see a listing. */}
-        <div className="mt-8 inline-flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-stone-200 bg-white px-5 py-4">
-          <span className="text-sm text-stone-500">A camera might rent for</span>
-          <span className="font-mono text-sm tabular text-stone-900">₹150/hour</span>
-          <span className="font-mono text-sm tabular text-stone-900">₹800/day</span>
-          <span className="font-mono text-sm tabular text-brand-700">₹15,000/month</span>
+    <li>
+      <Link
+        to={`/listings/${listing.id}`}
+        className="group block h-full overflow-hidden rounded-2xl border border-stone-200 bg-white transition-shadow hover:shadow-md"
+      >
+        <div className="aspect-[4/3] overflow-hidden bg-stone-100">
+          {listing.coverUrl ? (
+            <img
+              src={listing.coverUrl}
+              alt=""
+              // Lazy: a full grid is 24 image requests and only the first few are on
+              // screen.
+              loading="lazy"
+              className="size-full object-cover transition-transform group-hover:scale-[1.02]"
+            />
+          ) : (
+            <div className="grid size-full place-items-center text-sm text-stone-400">
+              No photo
+            </div>
+          )}
         </div>
-        <p className="mt-3 max-w-xl text-sm leading-relaxed text-stone-500">
-          Rent for a month and you pay the monthly rate — never thirty times the daily
-          one. We always charge the cheapest combination and show you the breakdown
-          before you book.
-        </p>
 
-        {!user && (
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Button as={Link} to="/register" size="lg">
-              Get started
-            </Button>
-            <Button as={Link} to="/login" size="lg" variant="outline">
-              Sign in
-            </Button>
-          </div>
-        )}
-
-        {user && isVerified && (
-          <p className="mt-8 text-sm text-stone-500">
-            Your email is confirmed — you&rsquo;ll be able to list and book as soon as
-            listings are live.
+        <div className="p-4">
+          <h3 className="truncate font-medium text-stone-900">{listing.title}</h3>
+          <p className="mt-1 truncate text-sm text-stone-500">
+            {listing.city ? `${listing.locality}, ${listing.city}` : listing.category_name}
           </p>
-        )}
-      </section>
+          {rate && (
+            <p className="mt-2 font-semibold text-stone-900">
+              {formatPaise(rate.amount)}
+              <span className="font-normal text-stone-500">/{rate.short}</span>
+            </p>
+          )}
+        </div>
+      </Link>
+    </li>
+  );
+}
 
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-          What people rent
-        </h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {CATEGORIES.map((category) => (
-            <Card key={category.label} className="p-5">
-              <p className="font-medium text-stone-900">{category.label}</p>
-              {/* The typical unit differs per category, and that is a real product
-                  fact rather than filler — a drill is rented by the hour and a water
-                  purifier by the month. */}
-              <p className="mt-1 text-sm text-stone-500">Usually {category.hint}</p>
-            </Card>
+export function HomePage() {
+  const [params, setParams] = useSearchParams();
+  const [state, setState] = useState({ status: "loading", listings: [], total: 0, error: null });
+  const [categories, setCategories] = useState([]);
+  const [cities, setCities] = useState([]);
+
+  // Read straight from the URL on every render. Nothing is mirrored, so nothing can
+  // fall out of sync.
+  const q = params.get("q") ?? "";
+  const category = params.get("category") ?? "";
+  const city = params.get("city") ?? "";
+  const unit = params.get("unit") ?? "daily";
+  const sort = params.get("sort") ?? "newest";
+  const maxRupees = params.get("maxRupees") ?? "";
+  const offset = Number(params.get("offset") ?? 0);
+
+  // The one piece of local state: the search box's draft. Typing must not fire a
+  // request per keystroke, so it is committed to the URL on submit.
+  const [searchDraft, setSearchDraft] = useState(q);
+  useEffect(() => setSearchDraft(q), [q]);
+
+  /**
+   * Writes filters into the URL.
+   *
+   * RESETS `offset` UNLESS THE CHANGE IS THE PAGE ITSELF. A narrower filter can match
+   * fewer rows than the current offset, which renders an empty page reading as "no
+   * matches" when the real cause is being on page four of a two-page result.
+   */
+  function apply(changes, { keepOffset = false } = {}) {
+    const next = new URLSearchParams(params);
+
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === "" || value == null) next.delete(key);
+      else next.set(key, String(value));
+    }
+
+    if (!keepOffset) next.delete("offset");
+    setParams(next);
+  }
+
+  useEffect(() => {
+    let active = true;
+
+    Promise.all([api.get("/listings/categories"), api.get("/listings/cities")])
+      .then(([categoryData, cityData]) => {
+        if (!active) return;
+        setCategories(categoryData.categories);
+        setCities(cityData.cities);
+      })
+      // Filter options failing to load must not stop the results rendering.
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const query = new URLSearchParams();
+    if (q) query.set("q", q);
+    if (category) query.set("category", category);
+    if (city) query.set("city", city);
+    if (sort !== "newest") query.set("sort", sort);
+    query.set("unit", unit);
+    if (offset) query.set("offset", String(offset));
+
+    // Rupees on screen, paise on the wire — converted here, once, at the boundary.
+    const maxPaise = parseRupeesToPaise(maxRupees);
+    if (maxPaise != null) query.set("maxPricePaise", String(maxPaise));
+
+    api
+      .get(`/listings?${query}`)
+      .then((data) => {
+        if (!active) return;
+        setState({ status: "ready", listings: data.listings, total: data.total, error: null });
+      })
+      .catch((error) => {
+        if (!active) return;
+        setState({ status: "failed", listings: [], total: 0, error: error.message });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [q, category, city, unit, sort, maxRupees, offset]);
+
+  const hasFilters = Boolean(q || category || city || maxRupees);
+  const lastOffset = Math.max(0, Math.floor((state.total - 1) / PAGE_SIZE) * PAGE_SIZE);
+
+  return (
+    <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:py-12">
+      <h1 className="text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">
+        Rent almost anything, nearby
+      </h1>
+      <p className="mt-2 max-w-2xl leading-relaxed text-stone-600">
+        By the hour, the day or the month — from people near you.
+      </p>
+
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          apply({ q: searchDraft.trim() });
+        }}
+        className="mt-6 flex gap-2"
+        role="search"
+      >
+        <input
+          type="search"
+          value={searchDraft}
+          onChange={(event) => setSearchDraft(event.target.value)}
+          placeholder="Camera, drill, bike…"
+          aria-label="Search listings"
+          className="h-12 w-full rounded-xl border border-stone-300 bg-white px-4 text-[15px] text-stone-900 placeholder:text-stone-400 focus:border-brand-600"
+        />
+        <Button type="submit" size="lg">
+          Search
+        </Button>
+      </form>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <select
+          value={category}
+          onChange={(event) => apply({ category: event.target.value })}
+          aria-label="Category"
+          className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900"
+        >
+          <option value="">All categories</option>
+          {categories.map((option) => (
+            <option key={option.slug} value={option.slug}>
+              {option.name}
+            </option>
           ))}
-        </div>
-      </section>
+        </select>
 
-      <section>
-        <Card className="p-6">
-          <h2 className="font-semibold text-stone-900">Coming next</h2>
-          <p className="mt-1 text-sm text-stone-500">
-            Not built yet. This panel disappears as each part lands.
+        <select
+          value={city}
+          onChange={(event) => apply({ city: event.target.value })}
+          aria-label="City"
+          className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900"
+        >
+          <option value="">Anywhere</option>
+          {cities.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={unit}
+          onChange={(event) => apply({ unit: event.target.value })}
+          aria-label="Rental period"
+          className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900"
+        >
+          {UNITS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        {/* onBlur rather than onChange: committing on every keystroke would push a
+            history entry and fire a request per character. */}
+        <input
+          type="text"
+          inputMode="decimal"
+          defaultValue={maxRupees}
+          onBlur={(event) => apply({ maxRupees: event.target.value.trim() })}
+          placeholder="Max ₹"
+          aria-label="Maximum price"
+          className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 placeholder:text-stone-400"
+        />
+
+        <select
+          value={sort}
+          onChange={(event) => apply({ sort: event.target.value })}
+          aria-label="Sort by"
+          className="h-11 rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900"
+        >
+          {SORTS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-stone-500" role="status">
+          {state.status === "loading"
+            ? "Searching…"
+            : `${state.total} ${state.total === 1 ? "listing" : "listings"}`}
+        </p>
+
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={() => setParams(new URLSearchParams())}
+            className="text-sm font-medium text-brand-700 underline underline-offset-2"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {state.status === "failed" && (
+        <Alert tone="error" className="mt-4">
+          {state.error}
+        </Alert>
+      )}
+
+      {state.status === "ready" && state.listings.length === 0 && (
+        <Card className="mt-6 p-10 text-center">
+          <h2 className="text-lg font-semibold text-stone-900">
+            {hasFilters ? "Nothing matches that" : "Nothing listed yet"}
+          </h2>
+          <p className="mx-auto mt-2 max-w-md leading-relaxed text-stone-600">
+            {hasFilters
+              ? "Try a wider search — fewer filters, or a different city."
+              : "Be the first. A camera gathering dust, a drill you use twice a year — someone nearby needs it this weekend."}
           </p>
-          <ul className="mt-4 space-y-2.5">
-            {COMING_NEXT.map((item, index) => (
-              <li key={item} className="flex items-start gap-3 text-sm text-stone-700">
-                <span className="grid size-6 shrink-0 place-items-center rounded-full bg-stone-100 font-mono text-xs tabular text-stone-500">
-                  {index + 1}
-                </span>
-                {item}
-              </li>
-            ))}
-          </ul>
+          <Button
+            as={Link}
+            to={hasFilters ? "/" : "/listings/new"}
+            variant="outline"
+            className="mt-6"
+          >
+            {hasFilters ? "Clear filters" : "List something"}
+          </Button>
         </Card>
-      </section>
+      )}
+
+      {state.listings.length > 0 && (
+        <ul className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {state.listings.map((listing) => (
+            <ListingTile key={listing.id} listing={listing} unit={unit} />
+          ))}
+        </ul>
+      )}
+
+      {/* The pager renders only when there is more than one page — a lone disabled
+          prev/next pair is noise on a result that already fits on screen. */}
+      {state.total > PAGE_SIZE && (
+        <nav className="mt-10 flex items-center justify-between gap-4" aria-label="Pagination">
+          <Button
+            variant="outline"
+            disabled={offset === 0}
+            onClick={() => apply({ offset: Math.max(0, offset - PAGE_SIZE) }, { keepOffset: true })}
+          >
+            Previous
+          </Button>
+
+          <p className="text-sm text-stone-500">
+            {offset + 1}–{Math.min(offset + PAGE_SIZE, state.total)} of {state.total}
+          </p>
+
+          <Button
+            variant="outline"
+            disabled={offset >= lastOffset}
+            onClick={() => apply({ offset: offset + PAGE_SIZE }, { keepOffset: true })}
+          >
+            Next
+          </Button>
+        </nav>
+      )}
     </div>
   );
 }

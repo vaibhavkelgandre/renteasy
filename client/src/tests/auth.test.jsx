@@ -25,6 +25,20 @@ const NO_SESSION = {
   body: { success: false, message: "Authentication required", errors: {} },
 };
 
+/**
+ * The home page browses listings now, so any test rendering `/` makes three more
+ * requests. Stubbed as empty rather than left unstubbed: an unstubbed call fails
+ * silently into the page's error state, and the assertions here would still pass while
+ * quietly testing a broken page.
+ */
+const EMPTY_BROWSE = {
+  "/listings/categories": { body: { success: true, message: "OK", data: { categories: [] } } },
+  "/listings/cities": { body: { success: true, message: "OK", data: { cities: [] } } },
+  "/listings": {
+    body: { success: true, message: "OK", data: { listings: [], total: 0, limit: 24, offset: 0 } },
+  },
+};
+
 /** Stubs fetch from a path → response map. Longest path match wins. */
 function stubFetch(routes) {
   const calls = [];
@@ -44,7 +58,12 @@ function stubFetch(routes) {
 }
 
 function renderApp(path, routes = {}, { strict = false } = {}) {
-  const calls = stubFetch({ "/auth/me": NO_SESSION, "/auth/terms/current": TERMS, ...routes });
+  const calls = stubFetch({
+    "/auth/me": NO_SESSION,
+    "/auth/terms/current": TERMS,
+    ...EMPTY_BROWSE,
+    ...routes,
+  });
   const tree = (
     <MemoryRouter initialEntries={[path]}>
       <AuthProvider>
