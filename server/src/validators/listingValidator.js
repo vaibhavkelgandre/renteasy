@@ -82,6 +82,10 @@ const listingFields = {
   maxDurationHours: durationHours,
 
   fulfilment: z.enum(FULFILMENTS).optional(),
+
+  // FR-203. Zero is meaningful here, unlike a rate: "bookable right now" is a real
+  // answer, so this is `min(0)` rather than `positive()`.
+  noticePeriodHours: z.number().int().min(0).max(8760).nullable().optional(),
 };
 
 /**
@@ -174,6 +178,10 @@ export const browseQuerySchema = z.object({
   minPricePaise: z.coerce.number().int().min(0).max(100_000_000).optional(),
   maxPricePaise: z.coerce.number().int().min(0).max(100_000_000).optional(),
 
+  // FR-303. Both or neither — one half of a range cannot express "free between".
+  availableFrom: z.coerce.date().optional(),
+  availableTo: z.coerce.date().optional(),
+
   sort: z.enum(["newest", "price_asc", "price_desc"]).default("newest"),
 
   limit: z.coerce.number().int().min(1).max(BROWSE_MAX_LIMIT).default(BROWSE_DEFAULT_LIMIT),
@@ -185,6 +193,18 @@ export const browseQuerySchema = z.object({
       query.maxPricePaise == null ||
       query.maxPricePaise >= query.minPricePaise,
     { message: "The maximum price cannot be below the minimum", path: ["maxPricePaise"] }
+  )
+  .refine(
+    (query) => (query.availableFrom == null) === (query.availableTo == null),
+    {
+      message: "Give both dates, or neither",
+      path: ["availableTo"],
+    }
+  )
+  .refine(
+    (query) =>
+      query.availableFrom == null || query.availableTo == null || query.availableTo > query.availableFrom,
+    { message: "The end must be after the start", path: ["availableTo"] }
   );
 
 /**
@@ -201,4 +221,31 @@ export const browseQuerySchema = z.object({
 export const quoteQuerySchema = z.object({
   start: z.coerce.date({ message: "Give a start date and time" }),
   end: z.coerce.date({ message: "Give an end date and time" }),
+});
+
+/** POST /api/listings/:id/blackouts — FR-200. */
+export const blackoutSchema = z.object({
+  startsAt: z.coerce.date({ message: "Give a start date and time" }),
+  endsAt: z.coerce.date({ message: "Give an end date and time" }),
+
+  // The owner's private note. Never returned to a renter — see listingService.
+  reason: z.string().trim().min(1).max(200).optional(),
+});
+
+/** Route params carrying a listing id and a blackout id. */
+export const blackoutParamsSchema = z.object({
+  id: z.string().uuid(),
+  blockId: z.string().uuid(),
+});
+
+/**
+ * GET /api/listings/:id/availability
+ *
+ * The window is optional: without it the caller gets everything, which is right for a
+ * listing that has three bookings and wrong for one with three hundred. A calendar
+ * asks month by month.
+ */
+export const availabilityQuerySchema = z.object({
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
 });

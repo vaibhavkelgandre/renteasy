@@ -22,6 +22,10 @@ import {
   browseListings,
   listBrowseCities,
   quoteListing,
+  getAvailability,
+  addBlackout,
+  listBlackouts,
+  removeBlackout,
 } from "../services/listingService.js";
 import { assertRealImages } from "../middlewares/uploadMiddleware.js";
 import { sendSuccess } from "../utils/response.js";
@@ -221,6 +225,55 @@ export async function getQuote(req, res, next) {
   try {
     const quote = await quoteListing(req.validatedParams.id, req.user ?? null, req.validatedQuery);
     sendSuccess(res, { message: "OK", data: quote });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** GET /api/listings/:id/availability — FR-204 (owner) and FR-205 (everyone). */
+export async function getListingAvailability(req, res, next) {
+  try {
+    const availability = await getAvailability(
+      req.validatedParams.id,
+      req.user ?? null,
+      req.validatedQuery
+    );
+    sendSuccess(res, { message: "OK", data: availability });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** GET /api/listings/:id/blackouts — the owner's own list, FR-204. */
+export async function getBlackouts(req, res, next) {
+  try {
+    const blackouts = await listBlackouts(
+      req.validatedParams.id,
+      req.user,
+      req.validatedQuery
+    );
+    sendSuccess(res, { message: "OK", data: { blackouts } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** POST /api/listings/:id/blackouts — FR-200. */
+export async function postBlackout(req, res, next) {
+  try {
+    const blackout = await addBlackout(req.validatedParams.id, req.user, req.body);
+    sendSuccess(res, { status: 201, message: "Dates blocked", data: { blackout } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** DELETE /api/listings/:id/blackouts/:blockId */
+export async function deleteBlackout(req, res, next) {
+  try {
+    const { id, blockId } = req.validatedParams;
+    await removeBlackout(id, blockId, req.user);
+    sendSuccess(res, { message: "Dates freed", data: null });
   } catch (error) {
     next(error);
   }

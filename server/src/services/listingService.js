@@ -26,6 +26,10 @@ import {
   reorderPhotos,
   findPublishedListings,
   findBrowseCities,
+  insertBlackout,
+  findBlackouts,
+  deleteBlackout,
+  findUnavailablePeriods,
 } from "../repositories/listingRepository.js";
 import {
   uploadListingPhoto,
@@ -499,10 +503,13 @@ export async function reorderListingPhotos(id, actor, photoIds) {
  * @returns {Promise<{ listings: object[], total: number, limit: number, offset: number }>}
  */
 export async function browseListings(query) {
-  const { limit, offset, sort, category, city, q, unit, minPricePaise, maxPricePaise } = query;
+  const {
+    limit, offset, sort, category, city, q, unit, minPricePaise, maxPricePaise,
+    availableFrom, availableTo,
+  } = query;
 
   const { listings, total } = await findPublishedListings({
-    filters: { categorySlug: category, city, q, unit, minPricePaise, maxPricePaise },
+    filters: { categorySlug: category, city, q, unit, minPricePaise, maxPricePaise, availableFrom, availableTo },
     sort,
     limit,
     offset,
@@ -599,4 +606,141 @@ function describeHours(hours) {
     return `${days} day${days === 1 ? "" : "s"}`;
   }
   return `${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
+/**
+ * Adds a blackout — FR-200, FR-206.
+ *
+ * @param {string} id
+ * @param {object} actor
+ * @param {object} input
+ * @returns {Promise<object>}
+ * @throws {AppError} 404 / 403 / 400 / 409.
+ */
+export async function addBlackout(id, actor, { startsAt, endsAt, reason }) {
+  await loadOwnListing(id, actor);
+
+  if (new Date(endsAt) <= new Date(startsAt)) {
+    throw badRequest("A blackout must end after it starts.", { endsAt: "Must be after the start" });
+  }
+
+  try {
+    return await insertBlackout({ listingId: id, startsAt, endsAt, reason: reason ?? null });
+  } catch (error) {
+    // 23P01 — the EXCLUDE constraint: this overlaps another blackout.
+    if (error.code === "23P01") {
+      throw conflict("That overlaps a period you have already blocked out.", {
+        startsAt: "Overlaps an existing block",
+      });
+    }
+
+    /**
+     * 23514 — the trigger from migration 007: FR-206.
+     *
+     * The database's message names the colliding dates, and it is passed through
+     * rather than replaced. The owner can see that booking in their own list, and a
+     * refusal that will not say which one just produces a second attempt.
+     */
+    if (error.code === "23514") {
+      throw conflict(
+        "You have a confirmed booking in that period. Cancel it first, or choose different dates.",
+        { startsAt: "Overlaps a confirmed booking" }
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * The owner's own blackouts, with their ids and their reasons — FR-204.
+ *
+ * SEPARATE FROM `getAvailability`, AND THE SPLIT IS THE POINT. That function answers
+ * "when is this unavailable" for anybody, and deliberately returns no id and no
+ * reason: an id is a handle for deleting a row, and a reason is the owner's private
+ * note. Adding either to a world-readable response to save a request would leak both
+ * to every visitor.
+ *
+ * So the calendar is fed by the public endpoint and the editable LIST beneath it by
+ * this one. Two requests, and the owner-only data never travels on the public path.
+ *
+ * @param {string} id
+ * @param {object} actor
+ * @param {{from?: Date|null, to?: Date|null}} [window]
+ * @returns {Promise<object[]>}
+ * @throws {AppError} 404 / 403.
+ */
+export async function listBlackouts(id, actor, { from = null, to = null } = {}) {
+  await loadOwnListing(id, actor);
+  return findBlackouts(id, { from, to });
+}
+
+/**
+ * Removes a blackout.
+ *
+ * @param {string} id
+ * @param {string} blockId
+ * @param {object} actor
+ * @returns {Promise<void>}
+ * @throws {AppError} 404 / 403.
+ */
+export async function removeBlackout(id, blockId, actor) {
+  await loadOwnListing(id, actor);
+  if (!(await deleteBlackout(id, blockId))) throw notFound("Not found");
+}
+
+/**
+ * When a listing is unavailable — FR-204 for the owner, FR-205 for everyone else.
+ *
+ * ONE FUNCTION, TWO AUDIENCES, and the difference is a single field. A renter is told
+ * that a period is taken; the OWNER is additionally told which of the two kinds it is,
+ * because one of them is theirs to change and the other is not.
+ *
+ * A renter must not learn the difference: "blocked by the owner" versus "booked by
+ * somebody else" is a fact about the owner's business and about another renter's
+ * arrangements, and neither is any of theirs.
+ *
+ * @param {string} id
+ * @param {object|null} actor
+ * @param {object} window
+ * @returns {Promise<{ unavailable: object[], noticePeriodHours: number|null, bookableFrom: string }>}
+ * @throws {AppError} 404 for a listing the caller may not see.
+ */
+export async function getAvailability(id, actor, { from = null, to = null } = {}) {
+  const listing = await findListingById(id);
+  if (!listing) throw notFound("Listing not found");
+
+  const isOwner = actor && listing.owner_id === actor.id;
+  if (listing.status !== "PUBLISHED" && !isOwner) throw notFound("Listing not found");
+
+  const periods = await findUnavailablePeriods(id, { from, to });
+
+  return {
+    unavailable: periods.map((period) => ({
+      startsAt: period.starts_at,
+      endsAt: period.ends_at,
+      ...(isOwner ? { kind: period.kind } : {}),
+    })),
+
+    noticePeriodHours: listing.notice_period_hours,
+
+    // FR-203, resolved to an instant rather than left as a number for the client to
+    // apply. The rule is the server's, and a client computing "now + 24h" would drift
+    // from it the moment the definition changed.
+    bookableFrom: earliestBookableFrom(listing).toISOString(),
+  };
+}
+
+/**
+ * The earliest instant a booking may start — FR-203.
+ *
+ * Exported because the booking service enforces the same rule and the two must not
+ * drift; a second copy of `now + notice` is how a listing page and a refusal end up
+ * disagreeing by an hour.
+ *
+ * @param {object} listing
+ * @returns {Date}
+ */
+export function earliestBookableFrom(listing) {
+  const hours = listing.notice_period_hours ?? 0;
+  return new Date(Date.now() + hours * 60 * 60 * 1000);
 }

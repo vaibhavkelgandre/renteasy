@@ -17,6 +17,7 @@ const LISTING_COLUMNS = `
   l.deposit_paise,
   l.locality, l.city,
   l.min_duration_hours, l.max_duration_hours,
+  l.notice_period_hours,
   l.fulfilment,
   l.published_at, l.created_at, l.updated_at
 `;
@@ -83,19 +84,22 @@ export async function insertListing({
   minDurationHours = null,
   maxDurationHours = null,
   fulfilment = "PICKUP",
+  noticePeriodHours = null,
 }) {
   const { rows } = await query(
     `INSERT INTO listings (
        owner_id, category_id, title, description, condition,
        hourly_rate_paise, daily_rate_paise, monthly_rate_paise, deposit_paise,
-       locality, city, min_duration_hours, max_duration_hours, fulfilment
+       locality, city, min_duration_hours, max_duration_hours, fulfilment,
+       notice_period_hours
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING ${LISTING_COLUMNS.replaceAll("l.", "")}`,
     [
       ownerId, categoryId, title, description, condition,
       hourlyRatePaise, dailyRatePaise, monthlyRatePaise, depositPaise,
       locality, city, minDurationHours, maxDurationHours, fulfilment,
+      noticePeriodHours,
     ]
   );
   return rows[0];
@@ -177,6 +181,7 @@ export async function updateListing(id, fields) {
        min_duration_hours = CASE WHEN $22::boolean THEN $23::int    ELSE min_duration_hours END,
        max_duration_hours = CASE WHEN $24::boolean THEN $25::int    ELSE max_duration_hours END,
        fulfilment         = CASE WHEN $26::boolean THEN $27         ELSE fulfilment END,
+       notice_period_hours = CASE WHEN $28::boolean THEN $29::int   ELSE notice_period_hours END,
        updated_at         = now()
      WHERE id = $1
      RETURNING ${LISTING_COLUMNS.replaceAll("l.", "")}`,
@@ -195,6 +200,7 @@ export async function updateListing(id, fields) {
       f("minDurationHours"), fields.minDurationHours ?? null,
       f("maxDurationHours"), fields.maxDurationHours ?? null,
       f("fulfilment"), fields.fulfilment ?? null,
+      f("noticePeriodHours"), fields.noticePeriodHours ?? null,
     ]
   );
   return rows[0] ?? null;
@@ -402,7 +408,10 @@ const RATE_COLUMN = {
  * @returns {{ clause: string, params: unknown[], rateColumn: string }}
  */
 function buildBrowseWhere(filters) {
-  const { categorySlug, city, q, unit = "daily", minPricePaise, maxPricePaise } = filters;
+  const {
+    categorySlug, city, q, unit = "daily", minPricePaise, maxPricePaise,
+    availableFrom, availableTo,
+  } = filters;
   const rateColumn = RATE_COLUMN[unit] ?? RATE_COLUMN.daily;
 
   // FR-309, and it is FIRST so it can never be lost among the optional conditions.
@@ -443,6 +452,41 @@ function buildBrowseWhere(filters) {
   if (maxPricePaise != null) {
     params.push(maxPricePaise);
     conditions.push(`l.${rateColumn} <= $${params.length}`);
+  }
+
+  /**
+   * FR-303 — free between two dates.
+   *
+   * A NOT EXISTS over the same union availability is built from, rather than a join:
+   * a join would multiply a listing by its number of clashing periods and then need a
+   * DISTINCT, which breaks the `count(*) OVER ()` the pagination depends on.
+   *
+   * `[)` bounds again, matching the constraint and every other overlap test in the
+   * product. Three notions of "overlap" would be two too many.
+   */
+  if (availableFrom && availableTo) {
+    params.push(availableFrom, availableTo);
+    const from = `$${params.length - 1}::timestamptz`;
+    const to = `$${params.length}::timestamptz`;
+
+    conditions.push(`NOT EXISTS (
+      SELECT 1 FROM bookings bk
+       WHERE bk.listing_id = l.id
+         AND bk.status IN ('ACCEPTED', 'ACTIVE')
+         AND bk.period && tstzrange(${from}, ${to}, '[)')
+    )`);
+    conditions.push(`NOT EXISTS (
+      SELECT 1 FROM availability_blocks ab
+       WHERE ab.listing_id = l.id
+         AND ab.period && tstzrange(${from}, ${to}, '[)')
+    )`);
+
+    // The notice period too: a listing needing a day's notice is not "available
+    // tomorrow morning", and offering it in that result would produce a refusal at
+    // the last step of a booking.
+    conditions.push(
+      `(l.notice_period_hours IS NULL OR ${from} >= now() + (l.notice_period_hours || ' hours')::interval)`
+    );
   }
 
   return { clause: conditions.join(" AND "), params, rateColumn };
@@ -532,4 +576,120 @@ export async function findBrowseCities() {
       ORDER BY city`
   );
   return rows.map((row) => row.city);
+}
+
+/**
+ * Adds a blackout — FR-200.
+ *
+ * @param {object} input
+ * @returns {Promise<object>}
+ * @throws {Error} `23P01` if it overlaps another blackout (the EXCLUDE constraint),
+ *         `23514` if it covers a confirmed booking (the trigger). The caller must
+ *         translate both — neither is an application fault.
+ */
+export async function insertBlackout({ listingId, startsAt, endsAt, reason = null }) {
+  const { rows } = await query(
+    `INSERT INTO availability_blocks (listing_id, starts_at, ends_at, reason)
+     VALUES ($1,$2,$3,$4)
+     RETURNING id, listing_id, starts_at, ends_at, reason, created_at`,
+    [listingId, startsAt, endsAt, reason]
+  );
+  return rows[0];
+}
+
+/**
+ * A listing's blackouts, optionally windowed.
+ *
+ * @param {string} listingId
+ * @param {object} [window]
+ * @returns {Promise<object[]>}
+ */
+export async function findBlackouts(listingId, { from = null, to = null } = {}) {
+  const { rows } = await query(
+    `SELECT id, listing_id, starts_at, ends_at, reason
+       FROM availability_blocks
+      WHERE listing_id = $1
+        AND ($2::timestamptz IS NULL OR ends_at > $2)
+        AND ($3::timestamptz IS NULL OR starts_at < $3)
+      ORDER BY starts_at`,
+    [listingId, from, to]
+  );
+  return rows;
+}
+
+/**
+ * Removes a blackout, scoped by listing.
+ *
+ * Scoped by `listing_id` as well as `id` so knowing a blackout's uuid is not enough to
+ * delete it through a listing the caller does not own — the same rule as photos.
+ *
+ * @param {string} listingId
+ * @param {string} blockId
+ * @returns {Promise<boolean>}
+ */
+export async function deleteBlackout(listingId, blockId) {
+  const { rowCount } = await query(
+    `DELETE FROM availability_blocks WHERE id = $1 AND listing_id = $2`,
+    [blockId, listingId]
+  );
+  return rowCount === 1;
+}
+
+/**
+ * Every period a listing is unavailable — FR-201 and FR-205, in one answer.
+ *
+ * A UNION of two tables, and it has to be. A renter looking at a calendar does not
+ * care whether a Tuesday is taken because somebody booked it or because the owner
+ * blocked it; they care that it is taken. Returning two lists and asking the client to
+ * merge them would put that judgement in three places (web, any future app, and the
+ * browse filter) and let them disagree.
+ *
+ * `kind` is returned anyway, because the OWNER's calendar does need the distinction —
+ * one of the two is theirs to change. FR-205's public view drops it.
+ *
+ * @param {string} listingId
+ * @param {object} [window]
+ * @returns {Promise<Array<{ starts_at: Date, ends_at: Date, kind: "BOOKING"|"BLACKOUT" }>>}
+ */
+export async function findUnavailablePeriods(listingId, { from = null, to = null } = {}) {
+  const { rows } = await query(
+    `SELECT starts_at, ends_at, kind FROM (
+       SELECT starts_at, ends_at, 'BOOKING' AS kind
+         FROM bookings
+        WHERE listing_id = $1 AND status IN ('ACCEPTED', 'ACTIVE')
+       UNION ALL
+       SELECT starts_at, ends_at, 'BLACKOUT' AS kind
+         FROM availability_blocks
+        WHERE listing_id = $1
+     ) periods
+      WHERE ($2::timestamptz IS NULL OR ends_at > $2)
+        AND ($3::timestamptz IS NULL OR starts_at < $3)
+      ORDER BY starts_at`,
+    [listingId, from, to]
+  );
+  return rows;
+}
+
+/**
+ * Whether a range collides with a blackout — the other half of FR-503.
+ *
+ * Separate from `findOverlappingBooking` rather than folded into it, because the two
+ * produce different refusals: "those dates are already booked" versus "the owner has
+ * marked those dates unavailable". Merging them would force one vague message.
+ *
+ * @param {string} listingId
+ * @param {Date|string} startsAt
+ * @param {Date|string} endsAt
+ * @returns {Promise<object | null>}
+ */
+export async function findOverlappingBlackout(listingId, startsAt, endsAt) {
+  const { rows } = await query(
+    `SELECT id, starts_at, ends_at
+       FROM availability_blocks
+      WHERE listing_id = $1
+        AND period && tstzrange($2::timestamptz, $3::timestamptz, '[)')
+      LIMIT 1`,
+    [listingId, startsAt, endsAt]
+  );
+  return rows[0] ?? null;
 }

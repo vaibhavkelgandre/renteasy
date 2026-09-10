@@ -26,7 +26,11 @@ import {
   findOverlappingBooking,
   findExpiredRequests,
 } from "../repositories/bookingRepository.js";
-import { findListingById } from "../repositories/listingRepository.js";
+import {
+  findListingById,
+  findOverlappingBlackout,
+} from "../repositories/listingRepository.js";
+import { earliestBookableFrom } from "./listingService.js";
 import { listingPhotoUrl } from "../config/cloudinary.js";
 import { buildQuote, billableHours } from "../utils/quote.js";
 import {
@@ -119,10 +123,28 @@ export async function requestBooking(actor, { listingId, startsAt, endsAt, messa
     throw badRequest(error.message, { endsAt: error.message });
   }
 
-  // A booking that has already started cannot be requested. Checked against the clock
-  // rather than against anything stored, so it is true at the moment of asking.
-  if (new Date(startsAt) <= new Date()) {
-    throw badRequest("Choose a start in the future.", { startsAt: "Must be in the future" });
+  /**
+   * FR-203 — the notice period, which subsumes "must be in the future".
+   *
+   * `earliestBookableFrom` is imported rather than reimplemented, so this refusal and
+   * the `bookableFrom` the listing page advertises cannot drift. A second copy of
+   * `now + notice` is exactly how a page and a rejection end up an hour apart.
+   *
+   * With no notice period set this is `now`, so the old "must be in the future" check
+   * is still there — it is just the zero case of a more general rule now.
+   */
+  const earliest = earliestBookableFrom(listing);
+  if (new Date(startsAt) < earliest) {
+    // `noticeHours`, not `hours` — the outer `hours` is the BILLABLE duration and is
+    // used again below for the min/max check. Shadowing it here would be legal and
+    // would read as though the two were the same quantity.
+    const noticeHours = listing.notice_period_hours ?? 0;
+    throw badRequest(
+      noticeHours > 0
+        ? `This owner needs ${noticeHours} hours' notice, so the earliest start is ${earliest.toISOString()}.`
+        : "Choose a start in the future.",
+      { startsAt: noticeHours > 0 ? `Needs ${noticeHours} hours' notice` : "Must be in the future" }
+    );
   }
 
   // FR-504 — the listing's own limits.
@@ -146,12 +168,24 @@ export async function requestBooking(actor, { listingId, startsAt, endsAt, messa
    * accepts. What it prevents is a renter waiting two days for an answer on dates that
    * were already committed to somebody else.
    *
-   * The blackout half of FR-503 is not built: `availability_blocks` is step 4.
+   * Both halves of FR-503 are checked, and they give DIFFERENT messages on purpose.
+   * "Already booked" and "the owner has marked those dates unavailable" send a renter
+   * to different next steps — the first invites trying adjacent dates, the second
+   * suggests asking the owner. One vague message for both would help with neither.
    */
   const clash = await findOverlappingBooking(listingId, startsAt, endsAt);
   if (clash) {
     throw conflict("Those dates are already booked. Try different ones.", {
       startsAt: "Already booked",
+    });
+  }
+
+  const blocked = await findOverlappingBlackout(listingId, startsAt, endsAt);
+  if (blocked) {
+    // The REASON is never returned. It is the owner's private note — "lending it to my
+    // brother" is not a renter's business.
+    throw conflict("The owner has marked those dates as unavailable.", {
+      startsAt: "Unavailable",
     });
   }
 

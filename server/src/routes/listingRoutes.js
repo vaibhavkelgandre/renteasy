@@ -16,6 +16,10 @@ import {
   getBrowse,
   getCities,
   getQuote,
+  getListingAvailability,
+  getBlackouts,
+  postBlackout,
+  deleteBlackout,
   postListing,
   getMyListings,
   getOneListing,
@@ -36,6 +40,9 @@ import {
   reorderPhotosSchema,
   browseQuerySchema,
   quoteQuerySchema,
+  blackoutSchema,
+  blackoutParamsSchema,
+  availabilityQuerySchema,
 } from "../validators/listingValidator.js";
 import { validateBody, validateParams, validateQuery } from "../validators/validate.js";
 import { requireAuth, requireVerifiedEmail, attachUserIfPresent } from "../middlewares/authMiddleware.js";
@@ -105,6 +112,41 @@ router.post("/:id/publish", requireAuth, requireVerifiedEmail, withListingId, po
 router.post("/:id/unpublish", requireAuth, withListingId, postUnpublish);
 
 router.delete("/:id", requireAuth, withListingId, deleteOneListing);
+
+// ---- Availability (step 4) ----
+//
+// The READ is public and owner-aware, exactly like the listing itself: anyone may see
+// WHEN a listing is unavailable (FR-205), but only the owner is told WHY - whether a
+// period is a booking or a blackout is a fact about their business and about another
+// renter's arrangements.
+router.get(
+  "/:id/availability",
+  attachUserIfPresent,
+  withListingId,
+  validateQuery(availabilityQuerySchema),
+  getListingAvailability
+);
+
+// The owner's own blackouts, ids and reasons included. Owner-only, unlike the
+// availability read above - see listBlackouts for why these are two endpoints.
+router.get(
+  "/:id/blackouts",
+  requireAuth,
+  withListingId,
+  validateQuery(availabilityQuerySchema),
+  getBlackouts
+);
+
+// Writing one is owner-only, and needs no verified email: blocking your own dates
+// puts nothing at stake for anybody else.
+router.post("/:id/blackouts", requireAuth, withListingId, validateBody(blackoutSchema), postBlackout);
+
+router.delete(
+  "/:id/blackouts/:blockId",
+  requireAuth,
+  validateParams(blackoutParamsSchema, "Not found"),
+  deleteBlackout
+);
 
 // ---- Photos ----
 //
