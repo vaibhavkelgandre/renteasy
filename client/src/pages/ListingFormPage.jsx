@@ -226,14 +226,14 @@ export function ListingFormPage() {
 
   if (!loaded) {
     return (
-      <p className="mx-auto max-w-2xl px-5 py-14 text-stone-500" role="status">
+      <p className="text-stone-500" role="status">
         Loading…
       </p>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-5 py-10 sm:py-14">
+    <div className="mx-auto w-full max-w-2xl">
       <Link to="/listings/mine" className="text-sm text-stone-500 underline underline-offset-2">
         ← Your listings
       </Link>

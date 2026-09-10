@@ -187,7 +187,7 @@ export function HomePage() {
   const lastOffset = Math.max(0, Math.floor((state.total - 1) / PAGE_SIZE) * PAGE_SIZE);
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:py-12">
+    <div className="mx-auto w-full max-w-6xl">
       <h1 className="text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">
         Rent almost anything, nearby
       </h1>

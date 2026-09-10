@@ -53,12 +53,20 @@ function RateCard({ listing }) {
         </p>
       )}
 
-      {/* Honest about what does not exist yet. A disabled "Book" button would imply the
-          feature is there and broken. */}
-      <div className="mt-5 rounded-xl bg-stone-50 px-4 py-3 text-sm leading-relaxed text-stone-600">
-        Booking and price negotiation are not built yet — they arrive with the next
-        steps of this project.
-      </div>
+      {/* Booking exists now. The placeholder that used to say it did not has gone,
+          rather than being left to contradict a working button. */}
+      <Button as={Link} to={`/listings/${listing.id}/book`} size="lg" fullWidth className="mt-5">
+        Request to book
+      </Button>
+
+      <p className="mt-3 text-center text-sm text-stone-500">
+        Nothing is charged. The owner has 48 hours to reply.
+      </p>
+
+      {/* Still honest about what does not exist: negotiation is step 7. */}
+      <p className="mt-4 border-t border-stone-200 pt-4 text-sm leading-relaxed text-stone-500">
+        Price negotiation is not built yet — for now the rate card is the price.
+      </p>
     </Card>
   );
 }
@@ -140,7 +148,7 @@ export function ListingDetailPage() {
   // error both.
   if (result.id !== id) {
     return (
-      <p className="mx-auto max-w-4xl px-5 py-14 text-stone-500" role="status">
+      <p className="text-stone-500" role="status">
         Loading…
       </p>
     );
@@ -148,7 +156,7 @@ export function ListingDetailPage() {
 
   if (result.error) {
     return (
-      <div className="mx-auto w-full max-w-lg px-5 py-14 text-center">
+      <div className="mx-auto w-full max-w-2xl text-center">
         <h1 className="text-xl font-semibold text-stone-900">Listing not found</h1>
         {/* One message for every cause: an unknown id, a malformed one, a draft, and an
             unpublished listing all answer identically, so the copy must not guess. */}
@@ -165,7 +173,7 @@ export function ListingDetailPage() {
   const { listing } = result;
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-5 py-8 sm:py-12">
+    <div className="mx-auto w-full max-w-6xl">
       <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
         <div>
           <Gallery photos={listing.photos} title={listing.title} />

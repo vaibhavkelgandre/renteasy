@@ -50,7 +50,7 @@ export function TermsPage() {
   }, []);
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-5 py-10 sm:py-14">
+    <div className="mx-auto w-full max-w-2xl">
       <div className="mb-8 flex justify-center">
         <Link to="/" aria-label="RentEasy home">
           <Logo />

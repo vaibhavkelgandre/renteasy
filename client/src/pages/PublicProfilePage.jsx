@@ -72,7 +72,7 @@ export function PublicProfilePage() {
 
   if (!settled) {
     return (
-      <div className="mx-auto w-full max-w-lg px-5 py-14">
+      <div className="mx-auto w-full max-w-2xl">
         <Card className="p-8">
           <div className="h-16 w-16 animate-pulse rounded-full bg-stone-100" />
           <span className="sr-only" role="status">
@@ -85,7 +85,7 @@ export function PublicProfilePage() {
 
   if (result.error) {
     return (
-      <div className="mx-auto w-full max-w-lg px-5 py-14 text-center">
+      <div className="mx-auto w-full max-w-2xl text-center">
         <h1 className="text-xl font-semibold text-stone-900">Profile not found</h1>
         {/* One message for every cause. The API answers an identical 404 for an unknown
             id, a malformed one and a suspended or deleted account — a stranger has no
@@ -104,7 +104,7 @@ export function PublicProfilePage() {
   const { profile } = result;
 
   return (
-    <div className="mx-auto w-full max-w-lg px-5 py-10 sm:py-14">
+    <div className="mx-auto w-full max-w-2xl">
       <Card className="p-7 sm:p-8">
         <div className="flex items-center gap-5">
           <Initials name={profile.name} />

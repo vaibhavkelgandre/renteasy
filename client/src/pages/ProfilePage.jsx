@@ -124,7 +124,7 @@ export function ProfilePage() {
   const { user, refresh, logout } = useAuth();
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-5 py-10 sm:py-14">
+    <div className="mx-auto w-full max-w-2xl">
       <h1 className="text-2xl font-semibold tracking-tight text-stone-900">Your account</h1>
       <p className="mt-2 leading-relaxed text-stone-600">
         Member since {memberSince(user.created_at)}.{" "}

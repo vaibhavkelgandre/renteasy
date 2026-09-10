@@ -93,6 +93,15 @@ export function AccountMenu() {
           </div>
 
           <Link
+            to="/bookings"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50"
+          >
+            Your bookings
+          </Link>
+
+          <Link
             to="/listings/mine"
             role="menuitem"
             onClick={() => setOpen(false)}

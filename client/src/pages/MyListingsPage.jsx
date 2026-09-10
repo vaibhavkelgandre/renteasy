@@ -63,7 +63,7 @@ export function MyListingsPage() {
   }, []);
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 py-10 sm:py-14">
+    <div className="mx-auto w-full max-w-6xl">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight text-stone-900">Your listings</h1>
         <Button as={Link} to="/listings/new">

@@ -319,15 +319,22 @@ describe("ListingDetailPage", () => {
     expect(image).toHaveAttribute("height", "900");
   });
 
-  it("says booking does not exist rather than showing a dead button", async () => {
+  it("offers a real booking action, and is still honest about negotiation", async () => {
     renderApp(`/listings/${LISTING_ID}`, {
       [`/listings/${LISTING_ID}`]: {
         body: { success: true, message: "OK", data: { listing: published } },
       },
     });
 
-    expect(await screen.findByText(/not built yet/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^book/i })).not.toBeInTheDocument();
+    // This test used to assert booking "was not built yet". Step 6 built it, and the
+    // assertion kept passing only because the replacement copy happens to mention that
+    // NEGOTIATION is unbuilt — a test passing for the wrong reason, which is worse than
+    // one failing.
+    const book = await screen.findByRole("link", { name: /request to book/i });
+    expect(book).toHaveAttribute("href", `/listings/${LISTING_ID}/book`);
+
+    // Still honest about what genuinely does not exist: negotiation is step 7.
+    expect(screen.getByText(/negotiation is not built yet/i)).toBeInTheDocument();
   });
 
   it("explains a 404 without guessing which cause it was", async () => {
