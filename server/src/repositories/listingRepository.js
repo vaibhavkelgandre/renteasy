@@ -363,3 +363,173 @@ export async function reorderPhotos(listingId, photoIdsInOrder) {
   );
   return rowCount;
 }
+
+/**
+ * How many listings one page of browse returns when the caller does not say.
+ *
+ * 24 divides by 2, 3 and 4, so the grid has no orphan tile at any breakpoint.
+ */
+export const BROWSE_DEFAULT_LIMIT = 24;
+
+/**
+ * The most a caller may ask for in one page — FR-307.
+ *
+ * A cap, not a suggestion. Without it `?limit=100000` is a request for the whole
+ * table, which is precisely the unbounded query pagination exists to remove.
+ */
+export const BROWSE_MAX_LIMIT = 48;
+
+/** Which rate column each rental unit filters and sorts on. */
+const RATE_COLUMN = {
+  hourly: "hourly_rate_paise",
+  daily: "daily_rate_paise",
+  monthly: "monthly_rate_paise",
+};
+
+/**
+ * Builds the WHERE clause and its parameters for a browse query.
+ *
+ * EXTRACTED SO THE PAGE AND ITS COUNT CANNOT DISAGREE. That is the whole reason this
+ * is a function rather than inline SQL: a `total` computed from even slightly
+ * different conditions than the rows is worse than no total, because the pager then
+ * offers a page four that renders empty and nobody can see why.
+ *
+ * (In practice `findPublishedListings` goes further and takes the count from the same
+ * statement — see there. This still exists because the conditions are fiddly enough to
+ * be worth naming once.)
+ *
+ * @param {object} filters
+ * @returns {{ clause: string, params: unknown[], rateColumn: string }}
+ */
+function buildBrowseWhere(filters) {
+  const { categorySlug, city, q, unit = "daily", minPricePaise, maxPricePaise } = filters;
+  const rateColumn = RATE_COLUMN[unit] ?? RATE_COLUMN.daily;
+
+  // FR-309, and it is FIRST so it can never be lost among the optional conditions.
+  // Drafts and unpublished listings must never appear in a browse result — a draft is
+  // somebody's unfinished work and an unpublished listing was deliberately withdrawn.
+  const conditions = ["l.status = 'PUBLISHED'"];
+  const params = [];
+
+  if (categorySlug) {
+    params.push(categorySlug);
+    conditions.push(`c.slug = $${params.length}`);
+  }
+
+  if (city) {
+    params.push(city);
+    // lower() on both sides, matching idx_listings_city. Comparing the raw column
+    // would miss "pune" against a listing stored as "Pune".
+    conditions.push(`lower(l.city) = lower($${params.length})`);
+  }
+
+  if (q) {
+    // ILIKE with wrapping wildcards, which is what the trigram indexes from migration
+    // 005 exist to serve. `%` and `_` in the term are escaped so a user typing "50%
+    // off" searches for that text rather than matching everything.
+    params.push(`%${q.replace(/[\%_]/g, (ch) => `\${ch}`)}%`);
+    conditions.push(`(l.title ILIKE $${params.length} OR l.description ILIKE $${params.length})`);
+  }
+
+  // A price filter is PER UNIT (FR-302), and it excludes listings that have no rate
+  // for that unit at all. That is the honest reading: "under ₹1000 a day" cannot
+  // sensibly include something with only a monthly price, and silently keeping it
+  // would make the filter look broken.
+  if (minPricePaise != null) {
+    params.push(minPricePaise);
+    conditions.push(`l.${rateColumn} >= $${params.length}`);
+  }
+
+  if (maxPricePaise != null) {
+    params.push(maxPricePaise);
+    conditions.push(`l.${rateColumn} <= $${params.length}`);
+  }
+
+  return { clause: conditions.join(" AND "), params, rateColumn };
+}
+
+/** Maps a sort key to SQL. Never interpolates caller input. */
+function buildBrowseOrder(sort, rateColumn) {
+  switch (sort) {
+    case "price_asc":
+      // NULLS LAST so listings with no rate for the chosen unit sink to the bottom
+      // rather than heading the results — Postgres sorts NULLs first on ASC by default,
+      // which would put every priceless listing at the top of "cheapest first".
+      return `l.${rateColumn} ASC NULLS LAST, l.created_at DESC`;
+    case "price_desc":
+      return `l.${rateColumn} DESC NULLS LAST, l.created_at DESC`;
+    default:
+      return "l.created_at DESC";
+  }
+}
+
+/**
+ * One page of published listings, plus the total that page came from — FR-300 to
+ * FR-307, FR-309.
+ *
+ * THE TOTAL COMES FROM THE SAME STATEMENT AS THE ROWS, via `count(*) OVER ()`. A
+ * window function is evaluated after WHERE and before LIMIT, so it counts every
+ * matching row while the query returns only this page.
+ *
+ * That is a deliberate step beyond "use the same WHERE in both queries". Sharing a
+ * clause relies on discipline; sharing a *statement* makes disagreement impossible.
+ * The cost is that the count is repeated on every returned row, which is nothing next
+ * to a pager that offers a page with no rows on it.
+ *
+ * `created_at DESC` is appended to every ordering as a tiebreaker. Without it two
+ * listings at the same price have no defined order, so the same row can appear on both
+ * page one and page two — the classic unstable-pagination bug, and one that only shows
+ * up once there is enough data to paginate.
+ *
+ * @param {object} input
+ * @param {object} [input.filters={}] categorySlug, city, q, unit, min/maxPricePaise.
+ * @param {string} [input.sort] `newest` (default), `price_asc`, `price_desc`.
+ * @param {number} [input.limit]
+ * @param {number} [input.offset=0]
+ * @returns {Promise<{ listings: object[], total: number }>}
+ * @throws {Error} On a database failure.
+ */
+export async function findPublishedListings({ filters = {}, sort, limit, offset = 0 } = {}) {
+  const { clause, params, rateColumn } = buildBrowseWhere(filters);
+  const order = buildBrowseOrder(sort, rateColumn);
+
+  const pageSize = Math.min(limit ?? BROWSE_DEFAULT_LIMIT, BROWSE_MAX_LIMIT);
+  params.push(pageSize, offset);
+
+  const { rows } = await query(
+    `SELECT ${WITH_CATEGORY},
+            count(*) OVER () AS total_count,
+            (SELECT p.storage_id FROM listing_photos p
+              WHERE p.listing_id = l.id ORDER BY p.sort_order LIMIT 1) AS cover_storage_id
+       FROM listings l JOIN categories c ON c.id = l.category_id
+      WHERE ${clause}
+      ORDER BY ${order}
+      LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
+  );
+
+  return {
+    // Zero rows means zero matches — there is no row to read a count off, and that is
+    // the correct answer anyway.
+    total: rows.length > 0 ? Number(rows[0].total_count) : 0,
+    listings: rows.map(({ total_count, ...listing }) => listing),
+  };
+}
+
+/**
+ * The distinct cities that currently have something published.
+ *
+ * Derived rather than stored: a fixed city list would go stale in both directions,
+ * offering places with nothing to rent and omitting the one somebody just listed in.
+ *
+ * @returns {Promise<string[]>}
+ * @throws {Error} On a database failure.
+ */
+export async function findBrowseCities() {
+  const { rows } = await query(
+    `SELECT DISTINCT city FROM listings
+      WHERE status = 'PUBLISHED' AND city IS NOT NULL
+      ORDER BY city`
+  );
+  return rows.map((row) => row.city);
+}

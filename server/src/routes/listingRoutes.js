@@ -13,6 +13,8 @@
 import { Router } from "express";
 import {
   getCategories,
+  getBrowse,
+  getCities,
   postListing,
   getMyListings,
   getOneListing,
@@ -31,8 +33,9 @@ import {
   listingParamsSchema,
   photoParamsSchema,
   reorderPhotosSchema,
+  browseQuerySchema,
 } from "../validators/listingValidator.js";
-import { validateBody, validateParams } from "../validators/validate.js";
+import { validateBody, validateParams, validateQuery } from "../validators/validate.js";
 import { requireAuth, requireVerifiedEmail, attachUserIfPresent } from "../middlewares/authMiddleware.js";
 import { acceptPhotos, handleUploadErrors } from "../middlewares/uploadMiddleware.js";
 
@@ -53,6 +56,23 @@ const withPhotoIds = validateParams(photoParamsSchema, "Listing not found");
 // The category list is public because the browse filters need it before anyone signs
 // in, and it discloses nothing.
 router.get("/categories", getCategories);
+
+// The cities that currently have something published. Derived, not a fixed list: a
+// hardcoded one goes stale in both directions - offering places with nothing to rent,
+// and omitting the one somebody just listed in.
+router.get("/cities", getCities);
+
+/**
+ * BROWSE - FR-300 to FR-309. Public, paginated, filtered.
+ *
+ * No auth middleware at all, not even attachUserIfPresent: browsing needs no account
+ * and the result does not vary by who is asking. The repository restricts to PUBLISHED
+ * as its first condition, so there is no caller for whom a draft could appear.
+ *
+ * `validateQuery`'s first consumer in this application - it was written at step 1 and
+ * has had no endpoint taking a query string until now.
+ */
+router.get("/", validateQuery(browseQuerySchema), getBrowse);
 
 // ---- Owner's own ----
 //

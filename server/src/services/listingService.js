@@ -24,6 +24,8 @@ import {
   insertPhotos,
   deletePhoto,
   reorderPhotos,
+  findPublishedListings,
+  findBrowseCities,
 } from "../repositories/listingRepository.js";
 import {
   uploadListingPhoto,
@@ -449,4 +451,54 @@ export async function reorderListingPhotos(id, actor, photoIds) {
 
   const listing = await findListingById(id);
   return withPhotoUrls(listing, await findPhotosForListing(id));
+}
+
+/**
+ * Browse published listings — FR-300 to FR-309.
+ *
+ * The one endpoint that makes a published listing findable. Until this existed a
+ * listing was visible only to somebody who already had its URL, which is not a
+ * marketplace.
+ *
+ * NO ACTOR PARAMETER, and that is the point (FR-300): browsing needs no account. The
+ * repository restricts to `status = 'PUBLISHED'` as its first condition, so there is
+ * no caller for whom a draft could appear and no authorization decision to forget.
+ *
+ * @param {object} query Already validated, defaulted and capped by browseQuerySchema.
+ * @returns {Promise<{ listings: object[], total: number, limit: number, offset: number }>}
+ */
+export async function browseListings(query) {
+  const { limit, offset, sort, category, city, q, unit, minPricePaise, maxPricePaise } = query;
+
+  const { listings, total } = await findPublishedListings({
+    filters: { categorySlug: category, city, q, unit, minPricePaise, maxPricePaise },
+    sort,
+    limit,
+    offset,
+  });
+
+  return {
+    listings: listings.map((listing) => ({
+      ...listing,
+      // A cover only — a browse tile shows one image, and building URLs for every
+      // photo of every listing on the page would be work nobody looks at.
+      coverUrl: listing.cover_storage_id ? listingPhotoUrl(listing.cover_storage_id, "thumb") : null,
+    })),
+    total,
+
+    // Echoed back so the client never has to remember what it asked for, and so a
+    // defaulted or capped value is visible rather than silently different from the
+    // request. A caller that sent `limit=500` can see it got 48.
+    limit,
+    offset,
+  };
+}
+
+/**
+ * The cities that currently have something published — for the browse filter.
+ *
+ * @returns {Promise<string[]>}
+ */
+export async function listBrowseCities() {
+  return findBrowseCities();
 }

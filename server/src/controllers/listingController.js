@@ -19,6 +19,8 @@ import {
   addPhotos,
   removePhoto,
   reorderListingPhotos,
+  browseListings,
+  listBrowseCities,
 } from "../services/listingService.js";
 import { assertRealImages } from "../middlewares/uploadMiddleware.js";
 import { sendSuccess } from "../utils/response.js";
@@ -173,6 +175,32 @@ export async function patchPhotoOrder(req, res, next) {
       req.body.photoIds
     );
     sendSuccess(res, { message: "Photo order updated", data: { listing } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/listings — browse.
+ *
+ * Public. `req.validatedQuery`, not `req.query`: in Express 5 `req.query` became a
+ * getter with no setter, so `validateQuery` cannot replace it in place. Reading the raw
+ * one here would bypass every default, coercion and cap the schema applies — and
+ * `limit` would arrive as the string "24".
+ */
+export async function getBrowse(req, res, next) {
+  try {
+    const page = await browseListings(req.validatedQuery);
+    sendSuccess(res, { message: "OK", data: page });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** GET /api/listings/cities — the cities with something published. */
+export async function getCities(_req, res, next) {
+  try {
+    sendSuccess(res, { message: "OK", data: { cities: await listBrowseCities() } });
   } catch (error) {
     next(error);
   }

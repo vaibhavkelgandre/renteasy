@@ -8,6 +8,10 @@
  */
 
 import { z } from "zod";
+import {
+  BROWSE_DEFAULT_LIMIT,
+  BROWSE_MAX_LIMIT,
+} from "../repositories/listingRepository.js";
 
 /** Matches the CHECK in migration 004. A closed list, tied to wording in the UI. */
 const CONDITIONS = ["NEW", "LIKE_NEW", "GOOD", "FAIR"];
@@ -139,3 +143,46 @@ export const photoParamsSchema = z.object({
 export const reorderPhotosSchema = z.object({
   photoIds: z.array(z.string().uuid()).min(1, "List the photos in the order you want"),
 });
+
+/**
+ * GET /api/listings — the browse query string.
+ *
+ * `z.coerce` throughout, because a query string is ALWAYS strings: `?limit=24` arrives
+ * as `"24"`, and `z.number()` would reject every page request ever made.
+ *
+ * DEFAULTED AND CAPPED, both deliberate and both FR-307. A caller that asks for no
+ * page still gets a bounded one, and `?limit=100000` is refused rather than served —
+ * without the cap, pagination is decoration over an unbounded query.
+ */
+export const browseQuerySchema = z.object({
+  // Filters. All optional; absent means "no restriction".
+  category: z.string().trim().min(1).max(60).optional(),
+  city: z.string().trim().min(1).max(120).optional(),
+
+  // The search term. Capped so an enormous string cannot be pushed through a LIKE.
+  q: z.string().trim().min(1).max(120).optional(),
+
+  /**
+   * Which rate the price filter and price sort apply to — FR-302.
+   *
+   * Defaulted rather than optional, so "cheapest first" always has a defined meaning.
+   * Without it, sorting by price with no unit chosen would have to guess between three
+   * columns, and would guess differently as the code changed.
+   */
+  unit: z.enum(["hourly", "daily", "monthly"]).default("daily"),
+
+  minPricePaise: z.coerce.number().int().min(0).max(100_000_000).optional(),
+  maxPricePaise: z.coerce.number().int().min(0).max(100_000_000).optional(),
+
+  sort: z.enum(["newest", "price_asc", "price_desc"]).default("newest"),
+
+  limit: z.coerce.number().int().min(1).max(BROWSE_MAX_LIMIT).default(BROWSE_DEFAULT_LIMIT),
+  offset: z.coerce.number().int().min(0).default(0),
+})
+  .refine(
+    (query) =>
+      query.minPricePaise == null ||
+      query.maxPricePaise == null ||
+      query.maxPricePaise >= query.minPricePaise,
+    { message: "The maximum price cannot be below the minimum", path: ["maxPricePaise"] }
+  );
