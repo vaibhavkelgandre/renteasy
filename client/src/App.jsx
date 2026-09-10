@@ -22,6 +22,7 @@ import { TermsPage } from "./pages/TermsPage.jsx";
 import { MyListingsPage } from "./pages/MyListingsPage.jsx";
 import { ListingFormPage } from "./pages/ListingFormPage.jsx";
 import { ListingDetailPage } from "./pages/ListingDetailPage.jsx";
+import { ListingAvailabilityPage } from "./pages/ListingAvailabilityPage.jsx";
 import { BookingRequestPage } from "./pages/BookingRequestPage.jsx";
 import { MyBookingsPage } from "./pages/MyBookingsPage.jsx";
 import { BookingDetailPage } from "./pages/BookingDetailPage.jsx";
@@ -58,6 +59,7 @@ export function App() {
           <Route path="/listings/mine" element={<MyListingsPage />} />
           <Route path="/listings/new" element={<ListingFormPage />} />
           <Route path="/listings/:id/edit" element={<ListingFormPage />} />
+          <Route path="/listings/:id/availability" element={<ListingAvailabilityPage />} />
 
           {/* Booking. `/listings/:id/book` sits under listings because that is what it
               acts on, while the bookings themselves live at their own root — a booking

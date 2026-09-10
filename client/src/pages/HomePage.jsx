@@ -20,7 +20,9 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Alert } from "../components/ui/Alert.jsx";
+import { Page } from "../components/ui/Page.jsx";
 import { api } from "../lib/api.js";
+import { toDateInput } from "../lib/dates.js";
 import { formatPaise, parseRupeesToPaise, RATE_UNITS } from "../lib/money.js";
 
 /** Must match BROWSE_DEFAULT_LIMIT on the server, or the pager miscounts pages. */
@@ -97,6 +99,10 @@ function ListingTile({ listing, unit }) {
 
 export function HomePage() {
   const [params, setParams] = useSearchParams();
+
+  // Local, not `toISOString().slice(0, 10)` — east of UTC that yields tomorrow after
+  // the afternoon, which would make today unselectable.
+  const todayValue = toDateInput(new Date());
   const [state, setState] = useState({ status: "loading", listings: [], total: 0, error: null });
   const [categories, setCategories] = useState([]);
   const [cities, setCities] = useState([]);
@@ -109,6 +115,12 @@ export function HomePage() {
   const unit = params.get("unit") ?? "daily";
   const sort = params.get("sort") ?? "newest";
   const maxRupees = params.get("maxRupees") ?? "";
+
+  // FR-303. `YYYY-MM-DD` in the URL rather than an instant: a shareable link should
+  // say "free on the 3rd", not carry somebody else's timezone and minutes.
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+
   const offset = Number(params.get("offset") ?? 0);
 
   // The one piece of local state: the search box's draft. Typing must not fire a
@@ -167,6 +179,18 @@ export function HomePage() {
     const maxPaise = parseRupeesToPaise(maxRupees);
     if (maxPaise != null) query.set("maxPricePaise", String(maxPaise));
 
+    // BOTH OR NEITHER. The server refuses a half-open range (400), so sending one
+    // alone would turn a half-filled form into an error message rather than the
+    // unfiltered results the reader is looking at. A date alone simply does nothing
+    // until its partner arrives.
+    if (from && to) {
+      // Local midnight to local midnight, matching the `[)` bounds the server
+      // compares against — `new Date("2026-10-03")` would be parsed as UTC and shift
+      // the window by the reader's offset.
+      query.set("availableFrom", new Date(`${from}T00:00`).toISOString());
+      query.set("availableTo", new Date(`${to}T00:00`).toISOString());
+    }
+
     api
       .get(`/listings?${query}`)
       .then((data) => {
@@ -181,26 +205,22 @@ export function HomePage() {
     return () => {
       active = false;
     };
-  }, [q, category, city, unit, sort, maxRupees, offset]);
+  }, [q, category, city, unit, sort, maxRupees, from, to, offset]);
 
-  const hasFilters = Boolean(q || category || city || maxRupees);
+  const hasFilters = Boolean(q || category || city || maxRupees || from || to);
   const lastOffset = Math.max(0, Math.floor((state.total - 1) / PAGE_SIZE) * PAGE_SIZE);
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
-      <h1 className="text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">
-        Rent almost anything, nearby
-      </h1>
-      <p className="mt-2 max-w-2xl leading-relaxed text-stone-600">
-        By the hour, the day or the month — from people near you.
-      </p>
-
+    <Page
+      title="Rent almost anything, nearby"
+      description="By the hour, the day or the month — from people near you."
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();
           apply({ q: searchDraft.trim() });
         }}
-        className="mt-6 flex gap-2"
+        className="flex gap-2"
         role="search"
       >
         <input
@@ -284,6 +304,61 @@ export function HomePage() {
         </select>
       </div>
 
+      {/* Its own row, not a seventh cell in the grid above. A date range is two
+          coupled inputs that only mean anything together, and dropping them into a
+          grid of independent dropdowns invites filling in one and wondering why
+          nothing happened. */}
+      <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
+        <div>
+          <label
+            htmlFor="available-from"
+            className="block text-xs font-medium text-stone-600"
+          >
+            Free from
+          </label>
+          <input
+            id="available-from"
+            type="date"
+            value={from}
+            min={todayValue}
+            onChange={(event) => apply({ from: event.target.value })}
+            className="mt-1 h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-900"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="available-to" className="block text-xs font-medium text-stone-600">
+            Until
+          </label>
+          <input
+            id="available-to"
+            type="date"
+            value={to}
+            // Never before the start. The server refuses an inverted range anyway;
+            // this stops the reader constructing one in the first place.
+            min={from || todayValue}
+            onChange={(event) => apply({ to: event.target.value })}
+            className="mt-1 h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-900"
+          />
+        </div>
+
+        <p className="py-2 text-xs text-stone-500">
+          {from && to
+            ? "Showing only what is free for the whole range."
+            : "Pick both dates to see only what is free."}
+        </p>
+
+        {(from || to) && (
+          <button
+            type="button"
+            onClick={() => apply({ from: "", to: "" })}
+            className="py-2 text-xs font-medium text-brand-700 underline underline-offset-2"
+          >
+            Any dates
+          </button>
+        )}
+      </div>
+
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-stone-500" role="status">
           {state.status === "loading"
@@ -362,6 +437,6 @@ export function HomePage() {
           </Button>
         </nav>
       )}
-    </div>
+    </Page>
   );
 }

@@ -22,6 +22,7 @@ import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Alert } from "../components/ui/Alert.jsx";
 import { api } from "../lib/api.js";
+import { formatWhen } from "../lib/dates.js";
 import { formatPaise } from "../lib/money.js";
 
 /**
@@ -50,15 +51,6 @@ const ACTIONS = {
 
 const UNIT_LABEL = { hour: "hour", day: "day", month: "month" };
 
-function formatWhen(iso) {
-  return new Date(iso).toLocaleString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 /** FR-511's trail, oldest first. */
 function Timeline({ events }) {

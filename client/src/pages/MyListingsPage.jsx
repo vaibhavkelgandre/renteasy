@@ -11,25 +11,9 @@ import { Link } from "react-router-dom";
 import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Alert } from "../components/ui/Alert.jsx";
+import { Page, StatusBadge } from "../components/ui/Page.jsx";
 import { api } from "../lib/api.js";
 import { formatPaise, RATE_UNITS } from "../lib/money.js";
-
-const STATUS_STYLES = {
-  DRAFT: { label: "Draft", className: "bg-stone-100 text-stone-700" },
-  PUBLISHED: { label: "Live", className: "bg-emerald-50 text-emerald-800" },
-  UNPUBLISHED: { label: "Hidden", className: "bg-amber-50 text-amber-800" },
-};
-
-function StatusBadge({ status }) {
-  const { label, className } = STATUS_STYLES[status] ?? STATUS_STYLES.DRAFT;
-  return (
-    <span
-      className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}
-    >
-      {label}
-    </span>
-  );
-}
 
 /** The cheapest-looking summary of a rate card, for a list row. */
 function RateSummary({ listing }) {
@@ -63,14 +47,14 @@ export function MyListingsPage() {
   }, []);
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-stone-900">Your listings</h1>
+    <Page
+      title="Your listings"
+      actions={
         <Button as={Link} to="/listings/new">
           List something
         </Button>
-      </div>
-
+      }
+    >
       {state.status === "failed" && (
         <Alert tone="error" className="mt-6">
           {state.error}
@@ -133,11 +117,25 @@ export function MyListingsPage() {
                     </div>
                   </div>
                 </Link>
+
+                {/* Outside the row's Link, not inside it: nesting one anchor in
+                    another is invalid HTML and browsers resolve it by ignoring the
+                    inner one, so the control would silently open the editor. */}
+                <div className="flex justify-end border-t border-stone-200 px-4 py-2">
+                  <Button
+                    as={Link}
+                    to={`/listings/${listing.id}/availability`}
+                    variant="ghost"
+                    size="sm"
+                  >
+                    Availability
+                  </Button>
+                </div>
               </Card>
             </li>
           ))}
         </ul>
       )}
-    </div>
+    </Page>
   );
 }

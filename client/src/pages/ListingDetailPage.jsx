@@ -5,15 +5,19 @@
  * and never assume `user`. A draft answers 404 to everyone but its owner, and the API
  * makes that decision — this page only renders what it is given.
  *
- * There is no Book button yet: bookings are step 6. Saying so plainly beats a button
- * that does nothing.
+ * Availability (FR-205) is fetched SEPARATELY from the listing rather than embedded in
+ * it. Two reasons: a calendar is paged by month while a listing is not, and a visitor
+ * who never scrolls that far should not pay for the query.
  */
 
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AvailabilityCalendar } from "../components/AvailabilityCalendar.jsx";
 import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
+import { Page } from "../components/ui/Page.jsx";
 import { api } from "../lib/api.js";
+import { formatWhen } from "../lib/dates.js";
 import { formatPaise, RATE_UNITS } from "../lib/money.js";
 
 const CONDITION_LABELS = {
@@ -126,6 +130,56 @@ function Gallery({ photos, title }) {
   );
 }
 
+/**
+ * FR-205 — when this listing is unavailable, as a visitor sees it.
+ *
+ * NO `kind`. The API sends that only to the owner, so the calendar renders one
+ * undifferentiated "unavailable" here without this component needing to know the
+ * distinction exists. Whether a period is somebody else's booking or the owner keeping
+ * it back is not a visitor's business.
+ *
+ * Renders NOTHING when the fetch fails, rather than an error box. A calendar is a
+ * supporting detail on this page: a failure here tells a reader nothing they can act
+ * on, and an alert in its place would push the price further down the screen.
+ */
+function Availability({ listingId }) {
+  const [state, setState] = useState({ id: null, data: null });
+
+  useEffect(() => {
+    let active = true;
+
+    api
+      .get(`/listings/${listingId}/availability`)
+      .then((data) => active && setState({ id: listingId, data }))
+      .catch(() => active && setState({ id: listingId, data: null }));
+
+    return () => {
+      active = false;
+    };
+  }, [listingId]);
+
+  if (state.id !== listingId || !state.data) return null;
+
+  const { unavailable, noticePeriodHours, bookableFrom } = state.data;
+
+  return (
+    <section className="mt-10 border-t border-stone-200 pt-8">
+      <h2 className="text-lg font-semibold text-stone-900">Availability</h2>
+
+      {noticePeriodHours != null && (
+        <p className="mt-1 text-sm leading-relaxed text-stone-600">
+          The owner needs notice — the earliest you can start is{" "}
+          <span className="font-medium text-stone-900">{formatWhen(bookableFrom)}</span>.
+        </p>
+      )}
+
+      <div className="mt-4 max-w-sm">
+        <AvailabilityCalendar unavailable={unavailable} bookableFrom={bookableFrom} />
+      </div>
+    </section>
+  );
+}
+
 export function ListingDetailPage() {
   const { id } = useParams();
   const [result, setResult] = useState({ id: null, listing: null, error: null });
@@ -156,7 +210,7 @@ export function ListingDetailPage() {
 
   if (result.error) {
     return (
-      <div className="mx-auto w-full max-w-2xl text-center">
+      <Page width="reading" className="text-center">
         <h1 className="text-xl font-semibold text-stone-900">Listing not found</h1>
         {/* One message for every cause: an unknown id, a malformed one, a draft, and an
             unpublished listing all answer identically, so the copy must not guess. */}
@@ -166,14 +220,14 @@ export function ListingDetailPage() {
         <Button as={Link} to="/" variant="outline" className="mt-7">
           Browse RentEasy
         </Button>
-      </div>
+      </Page>
     );
   }
 
   const { listing } = result;
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <Page>
       <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
         <div>
           <Gallery photos={listing.photos} title={listing.title} />
@@ -220,6 +274,8 @@ export function ListingDetailPage() {
             )}
           </dl>
 
+          <Availability listingId={listing.id} />
+
           <p className="mt-6 text-sm text-stone-500">
             Listed by{" "}
             <Link
@@ -237,6 +293,6 @@ export function ListingDetailPage() {
           <RateCard listing={listing} />
         </div>
       </div>
-    </div>
+    </Page>
   );
 }

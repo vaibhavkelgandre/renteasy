@@ -46,6 +46,28 @@ const CATEGORIES = {
 
 const LISTING_ID = "22222222-2222-4222-8222-222222222222";
 
+/**
+ * Two days in October, taken. No `kind` — that field reaches the owner only.
+ *
+ * BUILT FROM LOCAL MIDNIGHTS, not written as a `Z` literal, and that is what makes
+ * the boundary assertion below mean anything. `2026-10-05T00:00:00Z` is 05:30 on the
+ * 5th in Asia/Kolkata, so a period ending there really does reach into the 5th — the
+ * test would then be asserting the reader's timezone rather than the `[)` rule.
+ */
+const localMidnight = (day) => new Date(2026, 9, day).toISOString();
+
+const AVAILABILITY = {
+  body: {
+    success: true,
+    message: "OK",
+    data: {
+      unavailable: [{ startsAt: localMidnight(3), endsAt: localMidnight(5) }],
+      noticePeriodHours: null,
+      bookableFrom: new Date(2026, 8, 10).toISOString(),
+    },
+  },
+};
+
 const LISTING = {
   id: LISTING_ID,
   owner_id: USER.id,
@@ -298,6 +320,7 @@ describe("ListingDetailPage", () => {
       [`/listings/${LISTING_ID}`]: {
         body: { success: true, message: "OK", data: { listing: published } },
       },
+      [`/listings/${LISTING_ID}/availability`]: AVAILABILITY,
     });
 
     // Browsing needs no account — this page must never assume a user.
@@ -311,6 +334,7 @@ describe("ListingDetailPage", () => {
       [`/listings/${LISTING_ID}`]: {
         body: { success: true, message: "OK", data: { listing: published } },
       },
+      [`/listings/${LISTING_ID}/availability`]: AVAILABILITY,
     });
 
     // Which is why width and height are stored alongside the storage id at all.
@@ -324,6 +348,7 @@ describe("ListingDetailPage", () => {
       [`/listings/${LISTING_ID}`]: {
         body: { success: true, message: "OK", data: { listing: published } },
       },
+      [`/listings/${LISTING_ID}/availability`]: AVAILABILITY,
     });
 
     // This test used to assert booking "was not built yet". Step 6 built it, and the
@@ -349,5 +374,87 @@ describe("ListingDetailPage", () => {
     // identically, so the copy must not guess between them.
     expect(await screen.findByRole("heading", { name: /listing not found/i })).toBeInTheDocument();
     expect(screen.getByText(/taken down, or the link may be wrong/i)).toBeInTheDocument();
+  });
+});
+
+describe("Availability — FR-204 and FR-205", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  const published = { ...LISTING, status: "PUBLISHED" };
+
+  it("tells a visitor WHEN, and never WHY — FR-205", async () => {
+    renderApp(`/listings/${LISTING_ID}`, {
+      [`/listings/${LISTING_ID}`]: {
+        body: { success: true, message: "OK", data: { listing: published } },
+      },
+      [`/listings/${LISTING_ID}/availability`]: AVAILABILITY,
+    });
+
+    // The calendar opens on the current month, so reaching the fixture's dates means
+    // paging — which is worth doing here rather than dating the fixture to "now",
+    // because a fixed date is the only way to assert the bounds below exactly.
+    await screen.findByText(/September 2026/);
+    await userEvent.click(screen.getByRole("button", { name: /next month/i }));
+
+    // The `[)` bounds matter here and are the reason this asserts three days rather
+    // than "some days are marked": a period ending at midnight on the 5th covers the
+    // 3rd and the 4th, NOT the 5th. One day either side is invisible until somebody
+    // loses a booking to it.
+    expect(await screen.findByLabelText(/^3 October 2026 — unavailable$/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^4 October 2026 — unavailable$/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^5 October 2026 — available$/)).toBeInTheDocument();
+
+    // The legend says "Unavailable" and nothing finer. A visitor must not learn
+    // whether a period is somebody else's booking or the owner keeping it back.
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.queryByText(/blocked by you/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^booked$/i)).not.toBeInTheDocument();
+  });
+
+  it("separates the two kinds for the OWNER — FR-204", async () => {
+    renderApp(`/listings/${LISTING_ID}/availability`, {
+      "/auth/me": SESSION,
+      [`/listings/${LISTING_ID}/blackouts`]: {
+        body: {
+          success: true,
+          message: "OK",
+          data: {
+            blackouts: [
+              {
+                id: "b1",
+                starts_at: "2026-10-03T00:00:00Z",
+                ends_at: "2026-10-05T00:00:00Z",
+                reason: "Lending it to my brother",
+              },
+            ],
+          },
+        },
+      },
+      [`/listings/${LISTING_ID}/availability`]: {
+        body: {
+          success: true,
+          message: "OK",
+          data: {
+            unavailable: [
+              { startsAt: localMidnight(3), endsAt: localMidnight(5), kind: "BLACKOUT" },
+              { startsAt: localMidnight(10), endsAt: localMidnight(12), kind: "BOOKING" },
+            ],
+            noticePeriodHours: 24,
+            bookableFrom: "2026-09-11T00:00:00Z",
+          },
+        },
+      },
+      [`/listings/${LISTING_ID}`]: {
+        body: { success: true, message: "OK", data: { listing: published } },
+      },
+    });
+
+    // `kind` arrived, so the calendar distinguishes them — the presence of the field
+    // IS the permission, not a prop this component is separately told.
+    expect(await screen.findByText("Blocked by you")).toBeInTheDocument();
+    expect(screen.getByText("Booked")).toBeInTheDocument();
+
+    // And the reason, which the public endpoint never carries, is on the page.
+    expect(screen.getByText("Lending it to my brother")).toBeInTheDocument();
   });
 });

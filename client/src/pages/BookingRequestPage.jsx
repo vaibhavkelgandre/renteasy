@@ -19,13 +19,8 @@ import { Button } from "../components/ui/Button.jsx";
 import { Field } from "../components/ui/Field.jsx";
 import { Alert } from "../components/ui/Alert.jsx";
 import { api } from "../lib/api.js";
+import { toLocalInput } from "../lib/dates.js";
 import { formatPaise } from "../lib/money.js";
-
-/** `datetime-local` wants `YYYY-MM-DDTHH:mm` in LOCAL time, with no zone or seconds. */
-function toLocalInput(date) {
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
 
 const inHours = (hours) => new Date(Date.now() + hours * 60 * 60 * 1000);
 

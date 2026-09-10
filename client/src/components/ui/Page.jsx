@@ -37,12 +37,15 @@ const WIDTHS = {
  * @param {React.ReactNode} [props.description] Sits under the title.
  * @param {React.ReactNode} [props.actions] Top-right, beside the title.
  * @param {React.ReactNode} [props.back] A back link above the title.
+ * @param {string} [props.className] For the column's own content, e.g. `text-center`.
+ *        NOT for width or padding — those are the two things this component owns, and
+ *        overriding them from a page is exactly what it exists to stop.
  */
-export function Page({ width = "full", title, description, actions, back, children }) {
+export function Page({ width = "full", title, description, actions, back, className = "", children }) {
   return (
     // `mx-auto` centres the reading column inside AppLayout's wider one; at `full` it
     // is a no-op because the two widths match.
-    <div className={`mx-auto w-full ${WIDTHS[width]}`}>
+    <div className={`mx-auto w-full ${WIDTHS[width]} ${className}`}>
       {back && <div className="mb-4">{back}</div>}
 
       {title && (

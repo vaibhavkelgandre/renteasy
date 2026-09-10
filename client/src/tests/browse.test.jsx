@@ -192,6 +192,38 @@ describe("filters live in the URL", () => {
   });
 });
 
+  it("sends a date range only once BOTH halves are given — FR-303", async () => {
+    const calls = renderBrowse("/");
+    await screen.findByText("Camera 0");
+
+    const user = userEvent.setup();
+
+    // One date alone must change nothing. The server refuses a half-open range with a
+    // 400, so sending it would turn a half-filled form into an error message where
+    // the reader is still looking at unfiltered results.
+    await user.type(screen.getByLabelText(/free from/i), "2026-10-03");
+    await waitFor(() => expect(lastBrowseQuery(calls).get("availableFrom")).toBeNull());
+
+    await user.type(screen.getByLabelText(/^until$/i), "2026-10-06");
+
+    await waitFor(() => {
+      const query = lastBrowseQuery(calls);
+      // Instants on the wire, dates in the URL. Local midnight, not `Z` — parsing
+      // "2026-10-03" as UTC would shift the whole window by the reader's offset.
+      expect(query.get("availableFrom")).toBe(new Date(2026, 9, 3).toISOString());
+      expect(query.get("availableTo")).toBe(new Date(2026, 9, 6).toISOString());
+    });
+  });
+
+  it("never lets the end of the range precede its start", async () => {
+    renderBrowse("/?from=2026-10-03");
+    await screen.findByText("Camera 0");
+
+    // Enforced by the input itself as well as by the server: a reader should not be
+    // able to construct a range that can only be refused.
+    expect(screen.getByLabelText(/^until$/i)).toHaveAttribute("min", "2026-10-03");
+  });
+
 describe("pagination", () => {
   beforeEach(() => vi.restoreAllMocks());
 

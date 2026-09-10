@@ -17,6 +17,7 @@ import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Alert } from "../components/ui/Alert.jsx";
 import { api } from "../lib/api.js";
+import { formatRange } from "../lib/dates.js";
 import { formatPaise } from "../lib/money.js";
 
 const SIDES = [
@@ -24,19 +25,6 @@ const SIDES = [
   { value: "owner", label: "Lending", empty: "Nobody has asked to rent your things yet." },
 ];
 
-/** A date range, without repeating the month when both ends share one. */
-function formatRange(startsAt, endsAt) {
-  const from = new Date(startsAt);
-  const to = new Date(endsAt);
-  const sameDay = from.toDateString() === to.toDateString();
-
-  const date = (d) => d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  const time = (d) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-
-  // A same-day rental is an hourly one, so the times are the information; a multi-day
-  // rental is about the dates and the times are noise.
-  return sameDay ? `${date(from)}, ${time(from)} – ${time(to)}` : `${date(from)} – ${date(to)}`;
-}
 
 function BookingRow({ booking, side }) {
   const counterpart = side === "renter" ? "from the owner" : "from a renter";
