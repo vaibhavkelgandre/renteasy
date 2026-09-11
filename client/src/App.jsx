@@ -26,6 +26,7 @@ import { ListingAvailabilityPage } from "./pages/ListingAvailabilityPage.jsx";
 import { BookingRequestPage } from "./pages/BookingRequestPage.jsx";
 import { MyBookingsPage } from "./pages/MyBookingsPage.jsx";
 import { BookingDetailPage } from "./pages/BookingDetailPage.jsx";
+import { NotificationsPage } from "./pages/NotificationsPage.jsx";
 import { Button } from "./components/ui/Button.jsx";
 import { Logo } from "./components/Logo.jsx";
 
@@ -67,6 +68,7 @@ export function App() {
           <Route path="/listings/:id/book" element={<BookingRequestPage />} />
           <Route path="/bookings" element={<MyBookingsPage />} />
           <Route path="/bookings/:id" element={<BookingDetailPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
         </Route>
       </Route>
 

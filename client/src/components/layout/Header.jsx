@@ -22,6 +22,7 @@ import { Button } from "../ui/Button.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { AccountMenu } from "./AccountMenu.jsx";
 import { SearchBox } from "./SearchBox.jsx";
+import { NotificationBell } from "./NotificationBell.jsx";
 
 /**
  * The signed-in destinations.
@@ -120,6 +121,13 @@ export function Header() {
                 {/* THE PRIMARY ACTION, and it is the supply side. On a two-sided
                     marketplace the scarce side is people willing to lend, so listing
                     is what earns a filled button on every page. */}
+                {/* Before the CTA, after the nav. The bell is a thing that happens
+                    TO you, so it belongs with the account cluster rather than among
+                    the destinations — and it stays visible on every screen width,
+                    unlike "List an item", because missing a booking request is
+                    worse than having to find the button to make a listing. */}
+                <NotificationBell />
+
                 <Button as={Link} to="/listings/new" size="sm" className="hidden sm:inline-flex">
                   List an item
                 </Button>
