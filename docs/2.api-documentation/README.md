@@ -99,6 +99,9 @@ their own here.
 | `GET` | `/bookings` | Session | — (`side=renter\|owner`) | `200` `{ bookings, side }` | `400`, `401` |
 | `GET` | `/bookings/:id` | Session (party) | — | `200` `{ booking }` — the booking carries `events` and `availableActions` | `403`, `404` |
 | `POST` | `/bookings/:id/actions` | Session (party) | `{ action, comment? }` | `200` `{ booking }` | `400`, **`409`**, `403`, `404` |
+| `POST` | `/bookings/:id/photos` | Session (party) | `multipart` — `photos[]`, `phase`, `note?` | `201` `{ photos }` | `400`, **`409`**, `404` |
+| `GET` | `/bookings/:id/photos` | Session (party) | — | `200` `{ photos }` | `404` |
+| `GET` | `/bookings/:id/photos/:photoId/file` | Session (party) | — | `200` image bytes | `404` |
 
 ---
 
@@ -127,7 +130,7 @@ Not built. Listed so the shape is known — see [1.status.md](../1.status.md).
 
 | Endpoint | Step | Note |
 |---|---|---|
-| `POST /bookings/:id/offers` | 7 | Offer / counter-offer. An accepted price is **frozen into the booking** |
-| `POST /bookings/:id/actions` — `START` / `RETURN` / `COMPLETE` | 8 | Declared in the state machine, deliberately not yet reachable by any route |
+| `POST /bookings/:id/offers` | 7 | Offer / counter-offer. **Skipped by decision**, not blocked |
+| Late fees and damage claims | 8 | FR-705 to FR-707, a second pass. FR-707's deposit release needs payments |
 | `POST /bookings/:id/reviews` | 9 | Two-way, and only after a completed booking |
 | Payments and payouts | 10 | Never marked paid because the client said so — webhook verification only |

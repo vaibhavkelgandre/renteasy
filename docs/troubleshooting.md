@@ -281,3 +281,55 @@ regression clusters around what changed; this pattern is a shared-resource colli
 Backgrounding a test run and then starting another is the easy way to do this by accident. The
 client suite is safe to run alongside a server one — it touches no database — but a machine busy
 with both is slow enough to produce timeout failures that look just as real.
+
+## Adding a state to a partial-constraint design — four silent bugs in one change
+
+**Symptom.** None. That is the entry.
+
+**What happened.** Step 8 added `HANDED_OVER` to the booking state machine. The double-booking
+guard is a **partial** exclusion constraint — `EXCLUDE ... WHERE status IN (...)` — so any status
+not named in it holds no dates at all. Five places in the codebase independently listed which
+statuses hold dates, and after the new state existed four were still saying `('ACCEPTED',
+'ACTIVE')`:
+
+- the exclusion constraint itself
+- `findOverlappingBooking`, the friendly pre-check
+- `findUnavailablePeriods`, which feeds the availability calendar
+- the browse "free between these dates" filter
+- the FR-206 trigger that stops a blackout covering a confirmed booking
+
+Three of those would have answered **wrong without erroring**: an item physically out on rental
+would have vanished from its own calendar, been offered in a free-dates search, and been
+black-out-able by its owner.
+
+**Fix.** `DATES_HELD_STATUSES` in `bookingStateMachine.js`, passed into every query as a parameter
+instead of written out inside it. The two SQL copies that cannot take a parameter — a constraint
+and a trigger — are pinned by a test that reads the constraint back out of `pg_constraint` and
+compares it against the array.
+
+**The general lesson.** A partial index or constraint encodes a list, and a list in SQL cannot be
+imported. Before adding a value to any enum that a partial `WHERE` mentions, grep for every copy of
+that list — and if there is more than one, make the application's copy the only editable one and
+write a test that compares the database's against it. **The failure mode is silence**, so nothing
+else will tell you.
+
+## A multipart upload that answered "that upload could not be read"
+
+**Symptom.** `POST /bookings/:id/photos` returned `400` with `"That upload could not be read."` for
+a perfectly valid JPEG.
+
+**Root cause.** `uploadMiddleware.js` configures multer with `limits: { fields: 0 }`, carrying the
+comment *"The photo endpoints need no text fields at all."* True when written — listing photos take
+none — and false the moment condition photos needed `phase`. Multer raised `LIMIT_FIELD_COUNT`,
+which was not in `handleUploadErrors`'s message map, so it fell through to the generic wording.
+That message points at the image, which is the one thing that was fine.
+
+**Fix.** A second multer instance for booking photos with `fields: 2`, rather than relaxing the
+shared one — the listing endpoint's zero is a real limit on what a multipart body can make the
+server buffer. `LIMIT_FIELD_COUNT` and `LIMIT_PART_COUNT` are now mapped to messages that name the
+actual cause.
+
+**Related, same feature:** `assertRealImages(files)` **mutates and returns nothing** — it stamps
+`detectedMimeType` onto each file in place. Using its return value gives `undefined`, which
+surfaces three frames later as "cannot read properties of undefined (reading 'length')" inside the
+service. Call it as a statement.

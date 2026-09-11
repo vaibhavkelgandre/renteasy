@@ -315,3 +315,44 @@ clearing the value requires an explicit `null`.
 Enforced in two places that must not drift: `POST /bookings` refuses a start inside the window and
 **says how much notice is needed**, and `GET /listings` excludes such listings from a date-filtered
 search.
+
+---
+
+## Booking actions after step 8
+
+`POST /bookings/:id/actions` takes `START`, `CONFIRM_RECEIPT`, `RETURN` and `COMPLETE` alongside
+the four it already had. **No route changed** — the endpoint takes every action and its validator
+derives the enum from the state machine, which is what that design was for.
+
+```
+ACCEPTED    --START (owner)------------>  HANDED_OVER
+HANDED_OVER --CONFIRM_RECEIPT (renter)->  ACTIVE
+ACTIVE      --RETURN (renter)---------->  RETURNED
+RETURNED    --COMPLETE (owner)-------->   COMPLETED
+```
+
+The **receiving** party's confirmation advances the state at both ends. `RETURN` is legal from
+`HANDED_OVER` too, so a renter who never confirmed receipt is not trapped — handing it back is a
+stronger admission of having had it anyway.
+
+`CONFIRM_RECEIPT` and `COMPLETE` also accept a `system` actor: FR-708's 48-hour sweeps, which
+record **no actor** rather than attributing a confirmation to somebody who never gave one.
+
+## `POST /listings/../bookings/:id/photos` — condition photos, FR-702
+
+**Either party, `multipart/form-data`.** `phase` is `HANDOVER` or `RETURN`; `note` is optional and
+capped at 500 characters; up to six images per upload.
+
+| Status | Cause |
+|---|---|
+| `400` | No files, or a file whose **magic bytes** are not JPEG/PNG/WebP |
+| `409` | That phase is not open from the booking's current state |
+| `404` | Not a party to this booking |
+
+**Optional, never required** — a required upload would block a handover happening in a car park
+with one bar of signal.
+
+**`GET /bookings/:id/photos/:photoId/file` streams the bytes; it does not redirect.** These are
+private assets, and a signed provider URL is a bearer credential for as long as it lives — a
+redirect would put it in the address bar, the history and any referrer that follows. The client
+only ever receives a path on this API, re-authorised on every request.
