@@ -23,6 +23,7 @@ import {
   clearFakeUploads,
   isMediaConfigured,
   describeMediaMode,
+  privateUploadOptions,
 } from "../src/config/cloudinary.js";
 import { env } from "../src/config/env.js";
 
@@ -74,6 +75,46 @@ describe("upload options — the parts that are security decisions", () => {
     // So a future orphan sweep can list "our" assets, and so a shared account stays
     // separable from whatever else lives in it.
     expect(options.folder).toBe("renteasy/listings/listing-123");
+  });
+});
+
+describe("private upload options — condition photos and, later, ID documents", () => {
+  const options = privateUploadOptions("booking-123");
+
+  it("uploads AUTHENTICATED assets, which is the entire point of the function", () => {
+    // The one assertion here that must never be relaxed. A listing photo is
+    // `type: "upload"` — world-readable forever, correct for a shop window. A
+    // handover photo can show the inside of somebody's house, and an ID document
+    // obviously cannot be public at all. An authenticated asset has NO public URL:
+    // verified against the real provider, where the `/image/upload/<id>` form of a
+    // private asset answers 404 while a signed URL answers 200.
+    expect(options.type).toBe("authenticated");
+    expect(options.resource_type).toBe("image");
+  });
+
+  it("strips EXIF too, and the reason is stronger than for a listing photo", () => {
+    // A handover photo is taken at the moment and place an item changes hands, so its
+    // GPS tag is a home address with a timestamp on it.
+    const [transformation] = options.transformation;
+    expect(transformation.flags).toBe("strip_profile");
+    expect(transformation.quality).toBe("auto:good");
+  });
+
+  it("caps smaller than a listing photo — this is evidence, not a shop window", () => {
+    const [transformation] = options.transformation;
+    expect(transformation.width).toBe(1600);
+    expect(transformation.crop).toBe("limit");
+  });
+
+  it("keeps private assets under their own prefix, away from listings", () => {
+    // Separable at the provider, so "what is private?" is a question the account can
+    // answer without inspecting the delivery type of every asset one at a time.
+    expect(options.folder).toBe("renteasy/private/booking-123");
+    expect(options.folder.startsWith("renteasy/listings")).toBe(false);
+  });
+
+  it("refuses SVG here as well", () => {
+    expect(options.allowed_formats).toEqual(["jpg", "jpeg", "png", "webp"]);
   });
 });
 

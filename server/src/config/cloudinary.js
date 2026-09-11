@@ -28,6 +28,19 @@ import { env } from "./env.js";
 /** Everything lands under one prefix, so a sweep can list "our" assets. */
 const LISTINGS_FOLDER = "renteasy/listings";
 
+/**
+ * Private assets — condition photos today, identity documents when trust tiers land.
+ *
+ * A SEPARATE FOLDER FROM LISTINGS, and not only for tidiness: if the delivery type of
+ * these ever has to be audited or bulk-changed, "everything under renteasy/private"
+ * is a question the provider can answer. "Everything that happens to have been
+ * uploaded with type authenticated" is not.
+ */
+const PRIVATE_FOLDER = "renteasy/private";
+
+/** How long a minted private URL is good for. */
+const PRIVATE_URL_TTL_SECONDS = 5 * 60;
+
 /** @type {Array<{ storageId: string, bytes: number, folder: string }>} */
 const fakeUploads = [];
 
@@ -120,6 +133,181 @@ export function listingUploadOptions(listingId) {
     // image: Cloudinary refuses anything it cannot decode as one.
     allowed_formats: ["jpg", "jpeg", "png", "webp"],
   };
+}
+
+/**
+ * The upload options for a PRIVATE asset.
+ *
+ * Extracted and exported for the same reason `listingUploadOptions` is: under test the
+ * uploader returns a fake and never builds these, so a mistake in here would be
+ * invisible to the whole suite. `cloudinary.test.js` asserts on what this returns —
+ * and on this one, `type` is the assertion that matters most.
+ *
+ * @param {string} scope A folder segment grouping related assets, e.g. a booking id.
+ * @returns {object} Options for `uploader.upload_stream`.
+ */
+export function privateUploadOptions(scope) {
+  return {
+    folder: `${PRIVATE_FOLDER}/${scope}`,
+
+    // `authenticated`, AND THIS IS THE WHOLE POINT OF THE FUNCTION. A listing photo is
+    // `type: "upload"`, which is world-readable at a guessable-ish URL forever — right
+    // for a shop window, catastrophic for a photograph of the inside of somebody's
+    // house or of their ID. An authenticated asset has no public URL at all: it can
+    // only be reached through a signed one, which this module mints and which expires.
+    //
+    // Note the cost this accepts, deliberately: a signed URL cannot be CDN-cached, so
+    // every view is an origin fetch. That is the correct trade for evidence nobody
+    // looks at twice, and the wrong one for a grid of twenty listings — which is why
+    // the two paths exist rather than one.
+    type: "authenticated",
+
+    resource_type: "image",
+
+    // Same EXIF reasoning as a listing photo, and it matters MORE here rather than
+    // less: a handover photo is taken at the moment and place the item changes hands,
+    // so its GPS tag is a home address with a timestamp. Smaller cap than a listing's
+    // 2400px — this is evidence, not a shop window.
+    transformation: [
+      { width: 1600, height: 1600, crop: "limit", quality: "auto:good", flags: "strip_profile" },
+    ],
+
+    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+  };
+}
+
+/**
+ * Uploads one image buffer as a PRIVATE asset.
+ *
+ * Deliberately a separate function from `uploadListingPhoto` rather than a flag on it.
+ * The two differ in delivery type, folder, size cap and — most importantly — in who
+ * may ever see the result, and a boolean parameter is how a caller ends up publishing
+ * a document by passing the wrong one.
+ *
+ * @param {object} input
+ * @param {Buffer} input.buffer
+ * @param {string} input.scope Folder segment, e.g. a booking id.
+ * @returns {Promise<{ storageId: string, width: number, height: number, bytes: number, mimeType: string }>}
+ * @throws {Error} If the provider rejects it, or nothing is configured.
+ */
+export async function uploadPrivateAsset({ buffer, scope }) {
+  if (env.isTest) {
+    const storageId = `${PRIVATE_FOLDER}/${scope}/test-${fakeUploads.length + 1}`;
+    fakeUploads.push({ storageId, bytes: buffer.length, folder: PRIVATE_FOLDER });
+    return { storageId, width: 1200, height: 900, bytes: buffer.length, mimeType: "image/jpeg" };
+  }
+
+  if (!isMediaConfigured()) {
+    throw new Error(
+      "Image storage is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET."
+    );
+  }
+
+  const result = await new Promise((resolve, reject) => {
+    const stream = client().uploader.upload_stream(
+      privateUploadOptions(scope),
+      (error, uploaded) => (error ? reject(error) : resolve(uploaded))
+    );
+
+    stream.end(buffer);
+  });
+
+  return {
+    storageId: result.public_id,
+    width: result.width,
+    height: result.height,
+    bytes: result.bytes,
+    mimeType: `image/${result.format}`,
+  };
+}
+
+/**
+ * Mints a short-lived signed URL for a private asset.
+ *
+ * MINTED PER REQUEST AND NEVER STORED. Five minutes is long enough to load an image
+ * and short enough that a URL copied out of devtools, or left in a browser history,
+ * stops working before it is useful to anybody. Caching one would defeat both halves.
+ *
+ * This URL is still a bearer credential for the five minutes it lives — anyone holding
+ * it can fetch the bytes. That is why the endpoint serving it streams through this
+ * application instead of redirecting the browser to it: see the photo proxy. The
+ * signed URL never reaches the DOM.
+ *
+ * @param {string} storageId
+ * @returns {string}
+ * @throws {Error} If nothing is configured — a URL that cannot be signed is worthless.
+ */
+export function privateAssetUrl(storageId) {
+  if (!isMediaConfigured()) {
+    throw new Error("Image storage is not configured, so a private asset cannot be signed.");
+  }
+
+  return client().url(storageId, {
+    type: "authenticated",
+    resource_type: "image",
+    secure: true,
+    sign_url: true,
+    expires_at: Math.floor(Date.now() / 1000) + PRIVATE_URL_TTL_SECONDS,
+  });
+}
+
+/**
+ * Fetches a private asset's bytes.
+ *
+ * HERE RATHER THAN IN THE SERVICE, because this file is "the only module that knows
+ * where images physically live" and a `fetch` of a signed URL in a service would make
+ * that false. It also keeps the test branch beside the other two: without one, every
+ * test that reads a photo would either reach the network or fail on an id that was
+ * never really uploaded.
+ *
+ * @param {string} storageId
+ * @returns {Promise<ReadableStream | null>} Null when the provider does not have it.
+ * @throws {Error} If nothing is configured.
+ */
+export async function fetchPrivateAsset(storageId) {
+  if (env.isTest) {
+    // A one-pixel GIF. Real bytes, so a caller can stream and measure them, and the
+    // smallest thing that is unambiguously an image.
+    const known = fakeUploads.some((asset) => asset.storageId === storageId);
+    if (!known) return null;
+
+    const gif = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
+    return new Blob([gif]).stream();
+  }
+
+  const response = await fetch(privateAssetUrl(storageId));
+  return response.ok ? response.body : null;
+}
+
+/**
+ * Deletes a private asset. Best effort, same reasoning as `destroyListingPhoto`.
+ *
+ * `type: "authenticated"` must be passed here too — `destroy` defaults to `upload`
+ * and silently reports success for an id it never found, so the wrong type looks
+ * exactly like a successful delete while the asset stays.
+ *
+ * @param {string} storageId
+ * @returns {Promise<boolean>}
+ */
+export async function destroyPrivateAsset(storageId) {
+  if (env.isTest) {
+    const index = fakeUploads.findIndex((asset) => asset.storageId === storageId);
+    if (index >= 0) fakeUploads.splice(index, 1);
+    return true;
+  }
+
+  if (!isMediaConfigured()) return false;
+
+  try {
+    await client().uploader.destroy(storageId, {
+      resource_type: "image",
+      type: "authenticated",
+    });
+    return true;
+  } catch (error) {
+    console.error(`[media] failed to delete private ${storageId}: ${error.message}`);
+    return false;
+  }
 }
 
 /**
