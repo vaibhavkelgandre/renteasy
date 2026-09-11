@@ -17,6 +17,7 @@ email) · **Admin**.
 | [Authentication](auth.md) | register, verify, sign in, sessions, password reset |
 | [Profile](profile.md) | your own account, and the public projection |
 | [Listings](listings.md) | create, publish, photos, **browse**, quote and **availability** |
+| Bookings and notifications | in the endpoint table below; notes in [features/](../features/) |
 
 ---
 
@@ -102,6 +103,26 @@ their own here.
 | `POST` | `/bookings/:id/photos` | Session (party) | `multipart` — `photos[]`, `phase`, `note?` | `201` `{ photos }` | `400`, **`409`**, `404` |
 | `GET` | `/bookings/:id/photos` | Session (party) | — | `200` `{ photos }` | `404` |
 | `GET` | `/bookings/:id/photos/:photoId/file` | Session (party) | — | `200` image bytes | `404` |
+
+### Notifications
+
+Full notes: [features/09-notifications.md](../features/09-notifications.md). Every route is
+`requireAuth` and scoped to the caller by the service — there is no way to ask for somebody else's.
+
+| Method | Path | Auth | Body | Success | Errors |
+|---|---|---|---|---|---|
+| `GET` | `/notifications` | Session | — (`limit`, `offset`) | `200` `{ notifications, total, limit, offset }` | `400`, `401` |
+| `GET` | `/notifications/unread-count` | Session | — | `200` `{ unread }` | `401` |
+| `POST` | `/notifications/:id/read` | Session | — | `200` `{ notification }` | `401`, `404` |
+| `POST` | `/notifications/read-all` | Session | — | `200` `{ read }` | `401` |
+
+**`unread-count` is its own endpoint deliberately** — it is polled by the header for every
+signed-in user for as long as a tab is open, and deriving it from the list would make the most
+frequent request in the product one of the most expensive.
+
+**`POST /:id/read` answers `404` for somebody else's id AND for one already read.** Both mean
+"there is no unread notification of yours here", and distinguishing them would tell a caller
+whether a uuid they guessed exists.
 
 ---
 

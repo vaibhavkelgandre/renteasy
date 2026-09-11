@@ -333,3 +333,30 @@ actual cause.
 `detectedMimeType` onto each file in place. Using its return value gives `undefined`, which
 surfaces three frames later as "cannot read properties of undefined (reading 'length')" inside the
 service. Call it as a statement.
+
+## A probe that writes through an append-only table cannot clean up after itself
+
+**Symptom.** A throwaway script that drove one real booking transition against the dev database,
+to confirm the right person was notified, died on its own cleanup:
+
+```
+error: booking_events is append-only: DELETE is not permitted
+```
+
+**What happened.** The probe accepted a booking through the real service — correctly, and the
+notification it was checking was exactly right — then tried to put the database back: delete the
+notification, delete the audit event, reset the status. The first delete succeeded. The second hit
+the append-only trigger from migration 006 and threw, so the status reset never ran. The booking
+was left `ACCEPTED` with an `ACCEPTED` event in its trail and no notification.
+
+**The fix is not to force the cleanup.** The trail is true — the owner really did accept it, via
+the real service. Reverting the status would have left the row contradicting its own history, which
+is the one thing an append-only trail exists to prevent. So the booking stayed `ACCEPTED` and the
+*notification* was restored instead, making the data self-consistent again.
+
+**The lesson, which generalises past this project.** Before writing a probe that mutates shared
+data, check whether the write path is reversible at all. Anything that touches an append-only
+table, an audit trail or an external provider is one-way, and "I will just undo it afterwards" is a
+plan that fails half way through and leaves worse state than either doing nothing or committing
+fully. Either probe against the test database, or accept the write and design the probe so the
+end state is coherent.
