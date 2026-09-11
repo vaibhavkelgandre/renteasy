@@ -15,10 +15,15 @@
 /**
  * The states, and what each one means.
  *
- * REQUESTED  the renter has asked; the owner has not answered. Holds no dates.
- * ACCEPTED   the owner has committed. HOLDS THE DATES (see migration 006).
- * ACTIVE     the renter physically has the item. Still holds the dates.
- * RETURNED   the item is back; money and condition not yet settled.
+ * REQUESTED    the renter has asked; the owner has not answered. Holds no dates.
+ * ACCEPTED     the owner has committed. HOLDS THE DATES (see migration 006).
+ * HANDED_OVER  the owner says they have given it over; the renter has not yet
+ *              confirmed. HOLDS THE DATES — an unconfirmed handover is not a free
+ *              item (migration 008 adds it to the exclusion constraint).
+ * ACTIVE       the renter has confirmed they have it. Still holds the dates.
+ * RETURNED     the renter says it is back; the owner has not yet confirmed condition.
+ *              Deliberately does NOT hold the dates — the item is on the shelf, so an
+ *              early return genuinely frees the remaining days.
  * COMPLETED  finished.
  * DECLINED   the owner said no.
  * CANCELLED  either party pulled out before handover.
@@ -27,6 +32,7 @@
 export const BOOKING_STATES = [
   "REQUESTED",
   "ACCEPTED",
+  "HANDED_OVER",
   "ACTIVE",
   "RETURNED",
   "COMPLETED",
@@ -106,20 +112,67 @@ export const BOOKING_ACTIONS = {
     actors: ["system"],
   },
 
-  // ---- Step 8 (FR-700s) wires the three below. They are declared now because the
-  // map is supposed to be the whole truth about what a booking can do; leaving them
-  // out would make it a partial answer that reads like a complete one.
+  // ---- Step 8: handover, return and completion (FR-700 to FR-704, FR-708) ----
+  //
+  // THE RECEIVING PARTY CONFIRMS, AT BOTH ENDS. One side asserts the item moved and
+  // the other side's confirmation is what advances the state:
+  //
+  //   owner asserts handover  -> HANDED_OVER -> renter confirms -> ACTIVE
+  //   renter asserts return   -> RETURNED    -> owner confirms  -> COMPLETED
+  //
+  // Read literally, FR-700 says the owner's action makes a booking ACTIVE — which
+  // would leave FR-701's "renter confirms receipt" doing nothing at all. Mirroring
+  // the return side instead makes "you have my camera" something both people
+  // asserted, which is the entire value of the record when it later goes wrong.
+
+  /** FR-700. The owner says they have handed it over. Not yet agreed. */
   START: {
     from: ["ACCEPTED"],
-    to: "ACTIVE",
+    to: "HANDED_OVER",
     actors: ["owner"],
     claimsDates: true,
   },
-  RETURN: {
-    from: ["ACTIVE"],
-    to: "RETURNED",
-    actors: ["owner"],
+
+  /**
+   * FR-701. The renter agrees they have it.
+   *
+   * `system` is FR-708's timeout: a renter who never answers must not leave the
+   * booking stuck forever holding dates. The sweep confirms on the strength of the
+   * owner's assertion going unchallenged — recorded with no actor, so the trail never
+   * claims the renter said something they did not.
+   */
+  CONFIRM_RECEIPT: {
+    from: ["HANDED_OVER"],
+    to: "ACTIVE",
+    actors: ["renter", "system"],
+    claimsDates: true,
   },
+
+  /**
+   * FR-703. THE RENTER marks it returned — and this is a correction.
+   *
+   * The first version of this map had `actors: ["owner"]`, which contradicted the
+   * requirement outright. It also made no sense beside FR-704: if the owner both
+   * declares the return and confirms it, the renter has no way to say "I gave it
+   * back" and the two-sided record collapses to the owner's word.
+   *
+   * Legal from HANDED_OVER as well as ACTIVE. A renter who never got round to
+   * confirming receipt but has now handed the thing back must not be stuck — and
+   * returning it is a stronger admission of having had it than confirming receipt
+   * would have been.
+   */
+  RETURN: {
+    from: ["HANDED_OVER", "ACTIVE"],
+    to: "RETURNED",
+    actors: ["renter"],
+  },
+
+  /**
+   * FR-704. The owner confirms the condition it came back in.
+   *
+   * `system` is FR-708 again, from the other side: an owner who never inspects must
+   * not leave a renter's booking — and eventually their deposit — open indefinitely.
+   */
   COMPLETE: {
     from: ["RETURNED"],
     to: "COMPLETED",
@@ -190,7 +243,36 @@ export function availableActions(booking, actor) {
   );
 }
 
-/** Whether a status holds its dates against other bookings. Mirrors migration 006. */
+/**
+ * The statuses that hold their dates against other bookings.
+ *
+ * ONE DEFINITION, AND EVERY QUERY TAKES IT AS A PARAMETER. This list had been written
+ * out by hand in five places — the exclusion constraint, the overlap pre-check, the
+ * availability calendar, the browse date filter and the FR-206 blackout trigger — and
+ * adding HANDED_OVER in step 8 found four of them still saying `('ACCEPTED',
+ * 'ACTIVE')`. Three of those four were silent correctness bugs, not cosmetic:
+ *
+ *   the calendar would not have shown an item that was physically out
+ *   "free between these dates" would have offered it
+ *   an owner could have blacked out dates over a live handover
+ *
+ * Nothing errors in any of those cases. They just quietly answer wrong, which is why
+ * the list is now a value passed into the SQL rather than a literal repeated in it.
+ *
+ * THE TWO PLACES THAT CANNOT TAKE A PARAMETER are the exclusion constraint and the
+ * trigger, because a constraint cannot reference application code. Those are in
+ * migration 008 with a comment pointing here, and there is a test that reads the
+ * constraint out of the database and compares it against this array — which is the
+ * only way the two can be kept honest.
+ */
+export const DATES_HELD_STATUSES = ["ACCEPTED", "HANDED_OVER", "ACTIVE"];
+
+/**
+ * Whether a status holds its dates against other bookings.
+ *
+ * @param {string} status
+ * @returns {boolean}
+ */
 export function holdsDates(status) {
-  return status === "ACCEPTED" || status === "ACTIVE";
+  return DATES_HELD_STATUSES.includes(status);
 }

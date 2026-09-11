@@ -20,7 +20,11 @@
  * make the real reason harder to see.
  */
 
-import { sweepExpiredRequests, REQUEST_EXPIRY_HOURS } from "./services/bookingService.js";
+import {
+  sweepExpiredRequests,
+  sweepStalledConfirmations,
+  REQUEST_EXPIRY_HOURS,
+} from "./services/bookingService.js";
 
 /**
  * How often the sweeps run.
@@ -37,7 +41,13 @@ export const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
  * second timer — one scheduler is a thing you can reason about, two is a thing you
  * forget you have.
  */
-const SWEEPS = [{ name: "bookings", run: sweepExpiredRequests }];
+const SWEEPS = [
+  { name: "expired-requests", run: sweepExpiredRequests },
+
+  // FR-708. Added as an entry rather than a second timer — which is exactly what the
+  // list was for, and step 7's offer expiry will join it the same way.
+  { name: "stalled-confirmations", run: sweepStalledConfirmations },
+];
 
 /**
  * Runs every sweep once, in sequence.

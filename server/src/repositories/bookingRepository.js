@@ -3,6 +3,7 @@
  */
 
 import { query } from "../config/db.js";
+import { DATES_HELD_STATUSES } from "../services/bookingStateMachine.js";
 
 /**
  * The columns any caller may see, with the listing and the parties joined on.
@@ -209,11 +210,13 @@ export async function findOverlappingBooking(listingId, startsAt, endsAt, exclud
     `SELECT id, starts_at, ends_at, status
        FROM bookings
       WHERE listing_id = $1
-        AND status IN ('ACCEPTED', 'ACTIVE')
+        -- The list comes from the state machine, never written out here — see
+        -- DATES_HELD_STATUSES for what four hand-written copies of it cost.
+        AND status = ANY($5::text[])
         AND period && tstzrange($2::timestamptz, $3::timestamptz, '[)')
         AND ($4::uuid IS NULL OR id <> $4::uuid)
       LIMIT 1`,
-    [listingId, startsAt, endsAt, excludeBookingId]
+    [listingId, startsAt, endsAt, excludeBookingId, DATES_HELD_STATUSES]
   );
   return rows[0] ?? null;
 }
@@ -231,4 +234,118 @@ export async function findExpiredRequests(olderThan) {
     [olderThan]
   );
   return rows;
+}
+
+/**
+ * Bookings stuck waiting on somebody's confirmation — FR-708's input.
+ *
+ * `updated_at`, not `created_at`, and the difference is the whole query: these have
+ * been through several transitions, so what matters is how long they have sat in
+ * THIS state, not how old the booking is. A month-long rental would otherwise be
+ * swept the instant it was handed over.
+ *
+ * Served by `idx_bookings_awaiting_confirmation` (migration 008), which is partial on
+ * exactly these two statuses.
+ *
+ * @param {string} status `HANDED_OVER` or `RETURNED`.
+ * @param {Date} olderThan
+ * @returns {Promise<object[]>}
+ */
+export async function findAwaitingConfirmation(status, olderThan) {
+  const { rows } = await query(
+    `SELECT ${BOOKING_COLUMNS} ${FROM_BOOKINGS}
+      WHERE b.status = $1 AND b.updated_at < $2`,
+    [status, olderThan]
+  );
+  return rows;
+}
+
+/**
+ * Records condition photos for one phase of a booking — FR-702.
+ *
+ * One statement for the batch rather than one per file, so a partial insert is not a
+ * thing that can happen: either every photo of this upload is recorded or none is.
+ *
+ * @param {string} bookingId
+ * @param {string} phase `HANDOVER` or `RETURN`.
+ * @param {string} uploadedBy
+ * @param {Array<{storageId: string, width: number, height: number, bytes: number, mimeType: string}>} photos
+ * @param {string|null} note The uploader's own words about what the photos show.
+ * @returns {Promise<object[]>} The created rows.
+ * @throws {Error} On a database failure.
+ */
+export async function insertBookingPhotos(bookingId, phase, uploadedBy, photos, note = null) {
+  const { rows } = await query(
+    `INSERT INTO booking_photos
+       (booking_id, phase, uploaded_by, storage_id, width, height, bytes, mime_type, note)
+     SELECT $1, $2, $3, p.storage_id, p.width, p.height, p.bytes, p.mime_type, $4
+       FROM jsonb_to_recordset($5::jsonb)
+            AS p(storage_id text, width int, height int, bytes int, mime_type text)
+     RETURNING id, booking_id, phase, uploaded_by, storage_id, width, height, bytes,
+               mime_type, note, created_at`,
+    [
+      bookingId,
+      phase,
+      uploadedBy,
+      note,
+      JSON.stringify(
+        photos.map((photo) => ({
+          storage_id: photo.storageId,
+          width: photo.width,
+          height: photo.height,
+          bytes: photo.bytes,
+          mime_type: photo.mimeType,
+        }))
+      ),
+    ]
+  );
+  return rows;
+}
+
+/**
+ * Every condition photo on a booking, oldest first, with who took it.
+ *
+ * The uploader's NAME is joined in because the whole point of the record is who said
+ * what about the item's condition — an id would make the client fetch users to find
+ * out. `LEFT JOIN`: `uploaded_by` is `ON DELETE SET NULL`, so a deleted account
+ * leaves the evidence with no attribution rather than removing it.
+ *
+ * @param {string} bookingId
+ * @returns {Promise<object[]>}
+ * @throws {Error} On a database failure.
+ */
+export async function findBookingPhotos(bookingId) {
+  const { rows } = await query(
+    `SELECT p.id, p.phase, p.uploaded_by, p.storage_id, p.width, p.height,
+            p.mime_type, p.note, p.created_at, u.name AS uploaded_by_name
+       FROM booking_photos p
+       LEFT JOIN users u ON u.id = p.uploaded_by
+      WHERE p.booking_id = $1
+      ORDER BY p.created_at`,
+    [bookingId]
+  );
+  return rows;
+}
+
+/**
+ * One photo, scoped by its booking.
+ *
+ * SCOPED BY BOOKING AS WELL AS ID, so knowing a photo's uuid is not enough to fetch
+ * it through a booking the caller is party to — the same rule as listing photos, and
+ * it matters more here because the caller's right to see anything at all is derived
+ * from the booking.
+ *
+ * @param {string} bookingId
+ * @param {string} photoId
+ * @returns {Promise<object | null>}
+ * @throws {Error} On a database failure.
+ */
+export async function findBookingPhotoById(bookingId, photoId) {
+  const { rows } = await query(
+    `SELECT id, booking_id, storage_id, mime_type
+       FROM booking_photos
+      WHERE booking_id = $1 AND id = $2`,
+    [bookingId, photoId]
+  );
+  return rows[0] ?? null;
 }

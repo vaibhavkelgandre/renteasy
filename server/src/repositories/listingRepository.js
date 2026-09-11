@@ -3,6 +3,7 @@
  */
 
 import { query } from "../config/db.js";
+import { DATES_HELD_STATUSES } from "../services/bookingStateMachine.js";
 
 /**
  * The columns any caller may see.
@@ -487,10 +488,13 @@ function buildBrowseWhere(filters) {
     const from = `$${params.length - 1}::timestamptz`;
     const to = `$${params.length}::timestamptz`;
 
+    params.push(DATES_HELD_STATUSES);
+    const heldStatuses = `$${params.length}::text[]`;
+
     conditions.push(`NOT EXISTS (
       SELECT 1 FROM bookings bk
        WHERE bk.listing_id = l.id
-         AND bk.status IN ('ACCEPTED', 'ACTIVE')
+         AND bk.status = ANY(${heldStatuses})
          AND bk.period && tstzrange(${from}, ${to}, '[)')
     )`);
     conditions.push(`NOT EXISTS (
@@ -674,7 +678,7 @@ export async function findUnavailablePeriods(listingId, { from = null, to = null
     `SELECT starts_at, ends_at, kind FROM (
        SELECT starts_at, ends_at, 'BOOKING' AS kind
          FROM bookings
-        WHERE listing_id = $1 AND status IN ('ACCEPTED', 'ACTIVE')
+        WHERE listing_id = $1 AND status = ANY($4::text[])
        UNION ALL
        SELECT starts_at, ends_at, 'BLACKOUT' AS kind
          FROM availability_blocks
@@ -683,7 +687,7 @@ export async function findUnavailablePeriods(listingId, { from = null, to = null
       WHERE ($2::timestamptz IS NULL OR ends_at > $2)
         AND ($3::timestamptz IS NULL OR starts_at < $3)
       ORDER BY starts_at`,
-    [listingId, from, to]
+    [listingId, from, to, DATES_HELD_STATUSES]
   );
   return rows;
 }

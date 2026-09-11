@@ -65,3 +65,24 @@ export const bookingParamsSchema = z.object({
 export const bookingListQuerySchema = z.object({
   side: z.enum(["renter", "owner"]).default("renter"),
 });
+
+/**
+ * POST /api/bookings/:id/photos — FR-702.
+ *
+ * `multipart/form-data`, so every field arrives as a STRING. No `z.coerce` is needed
+ * because both fields already are strings, but the enum is what stops a caller
+ * inventing a third phase the service would then have no rule for.
+ */
+export const bookingPhotoSchema = z.object({
+  phase: z.enum(["HANDOVER", "RETURN"], { message: "Say which moment these show" }),
+
+  // The uploader's own words — "scratch on the lens barrel". Optional, and the reason
+  // a photograph alone is not always enough to settle anything.
+  note: z.string().trim().min(1).max(500).optional(),
+});
+
+/** Route params carrying a booking id and a photo id. */
+export const bookingPhotoParamsSchema = z.object({
+  id: z.string().uuid(),
+  photoId: z.string().uuid(),
+});

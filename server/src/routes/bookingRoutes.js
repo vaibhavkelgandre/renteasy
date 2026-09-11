@@ -13,6 +13,9 @@
 import { Router } from "express";
 import {
   postBooking,
+  postBookingPhotos,
+  getBookingPhotos,
+  getBookingPhotoFile,
   getMyBookings,
   getOneBooking,
   postBookingAction,
@@ -20,11 +23,14 @@ import {
 import {
   createBookingSchema,
   bookingActionSchema,
+  bookingPhotoSchema,
+  bookingPhotoParamsSchema,
   bookingParamsSchema,
   bookingListQuerySchema,
 } from "../validators/bookingValidator.js";
 import { validateBody, validateParams, validateQuery } from "../validators/validate.js";
 import { requireAuth, requireVerifiedEmail } from "../middlewares/authMiddleware.js";
+import { acceptBookingPhotos, handleUploadErrors } from "../middlewares/uploadMiddleware.js";
 
 const router = Router();
 
@@ -50,5 +56,40 @@ router.get("/", validateQuery(bookingListQuerySchema), getMyBookings);
 router.get("/:id", withBookingId, getOneBooking);
 
 router.post("/:id/actions", withBookingId, validateBody(bookingActionSchema), postBookingAction);
+
+/**
+ * ---- Condition photos (FR-702) ----
+ *
+ * NO NEW ROUTE WAS NEEDED FOR THE TRANSITIONS THEMSELVES. `/:id/actions` already
+ * takes every action and its validator derives the enum from the state machine, so
+ * step 8's four new transitions arrived with no routing change at all — which is what
+ * the one-endpoint design was for.
+ *
+ * Photos do need their own routes, because they are a resource rather than a move.
+ *
+ * `requireVerifiedEmail` is deliberately ABSENT. Both parties reached this point
+ * through a booking that already required it of the renter, and the moment somebody
+ * is standing in a doorway photographing a camera is the worst possible time to
+ * discover an unrelated account problem.
+ */
+router.post(
+  "/:id/photos",
+  withBookingId,
+  acceptBookingPhotos,
+  handleUploadErrors,
+  validateBody(bookingPhotoSchema),
+  postBookingPhotos
+);
+
+router.get("/:id/photos", withBookingId, getBookingPhotos);
+
+// Before `/:id/photos/:photoId` would ever be added — there is no such route, and
+// the `/file` suffix is deliberate: the bytes and the metadata are different
+// resources, and only one of them should ever be cached by a browser as an image.
+router.get(
+  "/:id/photos/:photoId/file",
+  validateParams(bookingPhotoParamsSchema, "Photo not found"),
+  getBookingPhotoFile
+);
 
 export { router as bookingRoutes };

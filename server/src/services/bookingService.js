@@ -25,13 +25,22 @@ import {
   findBookingsAsOwner,
   findOverlappingBooking,
   findExpiredRequests,
+  findAwaitingConfirmation,
+  insertBookingPhotos,
+  findBookingPhotos,
+  findBookingPhotoById,
 } from "../repositories/bookingRepository.js";
 import {
   findListingById,
   findOverlappingBlackout,
 } from "../repositories/listingRepository.js";
 import { earliestBookableFrom } from "./listingService.js";
-import { listingPhotoUrl } from "../config/cloudinary.js";
+import {
+  listingPhotoUrl,
+  uploadPrivateAsset,
+  fetchPrivateAsset,
+  destroyPrivateAsset,
+} from "../config/cloudinary.js";
 import { buildQuote, billableHours } from "../utils/quote.js";
 import {
   BOOKING_ACTIONS,
@@ -364,6 +373,64 @@ export async function listBookings(actor, side) {
  *
  * @returns {Promise<{ expired: number, failed: number }>}
  */
+/**
+ * How long a booking may sit waiting on the other party's confirmation — FR-708.
+ *
+ * 48 hours each, and they are separate constants because the two waits are not the
+ * same thing. A renter confirming receipt has the item in their hands and needs only
+ * to tap once; an owner confirming a return has to actually inspect the thing, which
+ * may mean getting home first. If either ever needs tuning it will be the second.
+ */
+export const RECEIPT_CONFIRMATION_HOURS = 48;
+export const RETURN_CONFIRMATION_HOURS = 48;
+
+/**
+ * FR-708 — neither party can complete unilaterally, but neither can stall forever.
+ *
+ * The requirement is a single sentence with two halves, and the second is what this
+ * is: "without a timeout". Without one, a renter who never confirms receipt leaves a
+ * booking holding its dates for good, and an owner who never inspects a return leaves
+ * the renter's booking — and eventually their deposit — open indefinitely. Neither
+ * party can force the other's hand, so time does it.
+ *
+ * NO ACTOR IS RECORDED, exactly as for the expiry sweep. Writing down the renter as
+ * having confirmed receipt of something they never acknowledged would put a false
+ * statement in an append-only trail whose entire value is that everything in it
+ * happened. The event says the system did it, on the strength of the other party's
+ * assertion going unchallenged for two days.
+ *
+ * Goes through `actOnBooking` rather than an UPDATE, so a swept booking passes the
+ * same state machine and writes the same kind of event as a human one.
+ *
+ * @returns {Promise<{ expired: number, failed: number }>} Named to match the other
+ *          sweep, so the scheduler can log both without special-casing either.
+ */
+export async function sweepStalledConfirmations() {
+  const phases = [
+    { status: "HANDED_OVER", action: "CONFIRM_RECEIPT", hours: RECEIPT_CONFIRMATION_HOURS },
+    { status: "RETURNED", action: "COMPLETE", hours: RETURN_CONFIRMATION_HOURS },
+  ];
+
+  let expired = 0;
+  let failed = 0;
+
+  for (const phase of phases) {
+    const cutoff = new Date(Date.now() - phase.hours * 60 * 60 * 1000);
+
+    for (const booking of await findAwaitingConfirmation(phase.status, cutoff)) {
+      try {
+        await actOnBooking(booking.id, null, phase.action);
+        expired += 1;
+      } catch {
+        // One booking somebody confirmed a moment ago must not stop the rest.
+        failed += 1;
+      }
+    }
+  }
+
+  return { expired, failed };
+}
+
 export async function sweepExpiredRequests() {
   const cutoff = new Date(Date.now() - REQUEST_EXPIRY_HOURS * 60 * 60 * 1000);
   const stale = await findExpiredRequests(cutoff);
@@ -383,4 +450,147 @@ export async function sweepExpiredRequests() {
   }
 
   return { expired, failed };
+}
+
+/**
+ * The states in which a condition photo of each kind still makes sense — FR-702.
+ *
+ * HANDOVER photos while the item is going out or is out; RETURN photos from the
+ * moment it comes back. Both windows stay open a step longer than the strict moment,
+ * because the realistic case is somebody photographing the item in a car park and
+ * uploading it when they get signal.
+ *
+ * They close at COMPLETED. After that the record is settled and a late addition is
+ * not evidence of the handover, it is evidence of an argument.
+ */
+const PHOTO_PHASES = {
+  HANDOVER: ["ACCEPTED", "HANDED_OVER", "ACTIVE"],
+  RETURN: ["ACTIVE", "HANDED_OVER", "RETURNED"],
+};
+
+/**
+ * Attaches condition photos to a booking — FR-702.
+ *
+ * OPTIONAL, NEVER REQUIRED, and that was a product decision rather than an oversight.
+ * Making them mandatory would block a handover happening in a car park with one bar
+ * of signal, and a handover that cannot be recorded is worse than one recorded
+ * without pictures. The booking detail page says plainly when a phase has none, which
+ * is the honest version of the same nudge.
+ *
+ * EITHER PARTY, at either phase. The requirement says "by both parties" and the
+ * reason is adversarial: a scratch is worth photographing by whoever thinks it helps
+ * them, and a record only one side can contribute to is not a record.
+ *
+ * @param {string} id
+ * @param {object} actor Must be a party to the booking.
+ * @param {object} input
+ * @param {"HANDOVER"|"RETURN"} input.phase
+ * @param {string} [input.note]
+ * @param {Array<{buffer: Buffer, detectedMimeType?: string}>} files
+ * @returns {Promise<object[]>} The stored rows, each with a proxy URL.
+ * @throws {AppError} 404 for a non-party, 400 for no files, 409 out of phase.
+ */
+export async function addBookingPhotos(id, actor, { phase, note = null }, files) {
+  const booking = await loadBookingForParty(id, actor);
+
+  if (files.length === 0) {
+    throw badRequest("Choose at least one photo.", { photos: "Choose at least one photo" });
+  }
+
+  if (!PHOTO_PHASES[phase].includes(booking.status)) {
+    throw conflict(
+      phase === "HANDOVER"
+        ? "Handover photos can only be added around the handover itself."
+        : "Return photos can only be added once the item is on its way back.",
+      { phase: `Not while this booking is ${booking.status.toLowerCase()}` }
+    );
+  }
+
+  const uploaded = [];
+  try {
+    for (const file of files) {
+      // PRIVATE, not the listing pipeline. These are taken wherever an item changes
+      // hands, so they show doorways, number plates, the inside of a home.
+      const asset = await uploadPrivateAsset({ buffer: file.buffer, scope: id });
+      uploaded.push({ ...asset, mimeType: file.detectedMimeType ?? asset.mimeType });
+    }
+  } catch (error) {
+    // Anything already uploaded in this batch has no row pointing at it. Clean up
+    // rather than leaving an orphan nobody will ever find — same as listing photos.
+    for (const asset of uploaded) await destroyPrivateAsset(asset.storageId);
+    throw error;
+  }
+
+  const rows = await insertBookingPhotos(id, phase, actor.id, uploaded, note?.trim() || null);
+  return rows.map((row) => presentPhoto(row, id));
+}
+
+/**
+ * Every condition photo on a booking, for a party to it.
+ *
+ * @param {string} id
+ * @param {object} actor
+ * @returns {Promise<object[]>}
+ * @throws {AppError} 404 for a non-party.
+ */
+export async function listBookingPhotos(id, actor) {
+  await loadBookingForParty(id, actor);
+  return (await findBookingPhotos(id)).map((row) => presentPhoto(row, id));
+}
+
+/**
+ * Fetches one photo's bytes, for a party to the booking.
+ *
+ * STREAMED THROUGH THIS APPLICATION RATHER THAN REDIRECTED TO, and that is the whole
+ * design. A signed Cloudinary URL is a bearer credential for the five minutes it
+ * lives: anyone who gets hold of it can fetch the image, and a redirect puts it in
+ * the browser's address bar, its history, and any referrer header that follows. By
+ * streaming, the signed URL exists only inside this process and the client only ever
+ * sees a path it must be authorised for on every single request.
+ *
+ * @param {string} id
+ * @param {string} photoId
+ * @param {object} actor
+ * @returns {Promise<{ stream: ReadableStream, mimeType: string }>}
+ * @throws {AppError} 404 for a non-party or an unknown photo.
+ */
+export async function getBookingPhotoFile(id, photoId, actor) {
+  await loadBookingForParty(id, actor);
+
+  const photo = await findBookingPhotoById(id, photoId);
+  if (!photo) throw notFound("Photo not found");
+
+  const stream = await fetchPrivateAsset(photo.storage_id);
+
+  // An asset gone from the provider while its row survives. A 404 rather than a 500:
+  // the caller can do nothing about either, and from outside the two are the same
+  // answer — there is no photo here.
+  if (!stream) throw notFound("Photo not found");
+
+  return { stream, mimeType: photo.mime_type };
+}
+
+/**
+ * Shapes a photo row for the client.
+ *
+ * NO URL TO THE PROVIDER — a path on this application. A signed URL would expire in
+ * the client's hands, and storing or sending one would leak a credential; the proxy
+ * path can be re-requested forever and is checked every time.
+ *
+ * @param {object} row
+ * @param {string} bookingId
+ * @returns {object}
+ */
+function presentPhoto(row, bookingId) {
+  return {
+    id: row.id,
+    phase: row.phase,
+    note: row.note,
+    uploadedBy: row.uploaded_by,
+    uploadedByName: row.uploaded_by_name ?? null,
+    width: row.width,
+    height: row.height,
+    createdAt: row.created_at,
+    url: `/api/bookings/${bookingId}/photos/${row.id}/file`,
+  };
 }

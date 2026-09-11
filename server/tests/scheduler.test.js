@@ -20,9 +20,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // because importing the real one would pull in a database connection for a test
 // that has no business needing one.
 const sweepExpiredRequests = vi.fn();
+const sweepStalledConfirmations = vi.fn();
 
 vi.mock("../src/services/bookingService.js", () => ({
   sweepExpiredRequests: (...args) => sweepExpiredRequests(...args),
+  sweepStalledConfirmations: (...args) => sweepStalledConfirmations(...args),
   REQUEST_EXPIRY_HOURS: 48,
 }));
 
@@ -35,6 +37,7 @@ describe("the sweep schedule", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     sweepExpiredRequests.mockReset().mockResolvedValue({ expired: 0, failed: 0 });
+    sweepStalledConfirmations.mockReset().mockResolvedValue({ expired: 0, failed: 0 });
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -69,7 +72,7 @@ describe("the sweep schedule", () => {
 
     await expect(runSweeps()).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining("bookings"),
+      expect.stringContaining("expired-requests"),
       "database went away"
     );
   });
@@ -127,6 +130,25 @@ describe("the sweep schedule", () => {
 
     // Idempotent: shutdown may run twice if two signals arrive.
     expect(() => stop()).not.toThrow();
+  });
+
+  it("runs EVERY sweep in the list, not just the first", async () => {
+    // The failure this guards against is adding a sweep to SWEEPS and having it
+    // silently never run — which looks exactly like the feature not working, three
+    // layers away from the scheduler.
+    await runSweeps();
+
+    expect(sweepExpiredRequests).toHaveBeenCalledTimes(1);
+    expect(sweepStalledConfirmations).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs the rest of the list after one of them throws", async () => {
+    // Sequential and in a try/catch each, so a broken sweep costs its own results
+    // and nobody else's.
+    sweepExpiredRequests.mockRejectedValueOnce(new Error("database went away"));
+
+    await expect(runSweeps()).resolves.toBeUndefined();
+    expect(sweepStalledConfirmations).toHaveBeenCalledTimes(1);
   });
 
   it("logs a pass that did something, and stays quiet about one that did not", async () => {

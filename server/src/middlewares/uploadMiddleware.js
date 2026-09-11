@@ -28,10 +28,38 @@ const upload = multer({
     files: MAX_PHOTOS_PER_LISTING,
 
     // Without this, a request can carry unlimited non-file fields and multer will
-    // happily buffer them all. The photo endpoints need no text fields at all.
+    // happily buffer them all. A LISTING photo upload needs no text fields at all,
+    // so zero is right here — booking photos, which do, get their own parser below
+    // rather than relaxing this one.
     fields: 0,
   },
 });
+
+/** A booking carries fewer photos per upload than a listing does: one moment, not a gallery. */
+export const MAX_PHOTOS_PER_UPLOAD = 6;
+
+/**
+ * The same parser, but allowing the two text fields a condition photo needs.
+ *
+ * A SEPARATE INSTANCE RATHER THAN RAISING `fields` ON THE SHARED ONE. The listing
+ * endpoint genuinely accepts no text at all, and that zero is a real limit on what an
+ * unauthenticated-ish multipart body can make the server buffer; widening it for
+ * every caller to suit one would trade that away for nothing.
+ *
+ * `fields: 2` is exactly `phase` and `note`. A third would be a mistake worth
+ * catching, and LIMIT_FIELD_COUNT is mapped below so it says so.
+ */
+const bookingUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PHOTO_BYTES, files: MAX_PHOTOS_PER_UPLOAD, fields: 2 },
+});
+
+/**
+ * Parses `multipart/form-data` for booking condition photos — FR-702.
+ *
+ * @type {import("express").RequestHandler}
+ */
+export const acceptBookingPhotos = bookingUpload.array("photos", MAX_PHOTOS_PER_UPLOAD);
 
 /**
  * Parses `multipart/form-data` with up to eight files under the field name `photos`.
@@ -56,6 +84,14 @@ export function handleUploadErrors(error, _req, _res, next) {
     LIMIT_FILE_SIZE: `Each photo must be under ${MAX_PHOTO_BYTES / 1024 / 1024}MB.`,
     LIMIT_FILE_COUNT: `A listing can have at most ${MAX_PHOTOS_PER_LISTING} photos.`,
     LIMIT_UNEXPECTED_FILE: 'Upload photos using the field name "photos".',
+
+    // Mapped because its absence cost a debugging session: a booking photo upload
+    // sent `phase` as a text field against a parser configured `fields: 0`, and the
+    // resulting LIMIT_FIELD_COUNT fell through to the generic "that upload could not
+    // be read" — which says nothing about the actual cause and sends you looking at
+    // the image.
+    LIMIT_FIELD_COUNT: "That upload carried unexpected form fields.",
+    LIMIT_PART_COUNT: "That upload carried too many parts.",
   };
 
   return next(badRequest(messages[error.code] ?? "That upload could not be read.", { photos: messages[error.code] ?? "That upload could not be read." }));
