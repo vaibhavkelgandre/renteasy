@@ -10,8 +10,13 @@
  * @param {object} props
  * @param {"sm"|"md"} [props.size="md"]
  * @param {boolean} [props.showWordmark=true]
+ * @param {string} [props.wordmarkClassName] Extra classes on the wordmark only.
+ *        Exists so the header can collapse it to the mark alone on a narrow screen
+ *        (`hidden sm:inline`) — a CSS hide rather than a second `<Logo showWordmark>`
+ *        call, because rendering the logo twice and hiding one is how two copies of
+ *        a brand mark drift apart.
  */
-export function Logo({ size = "md", showWordmark = true }) {
+export function Logo({ size = "md", showWordmark = true, wordmarkClassName = "" }) {
   const box = size === "sm" ? "size-8 rounded-lg" : "size-10 rounded-xl";
   const glyph = size === "sm" ? "size-4" : "size-5";
 
@@ -38,7 +43,9 @@ export function Logo({ size = "md", showWordmark = true }) {
       </span>
 
       {showWordmark && (
-        <span className={`font-semibold tracking-tight text-stone-900 ${size === "sm" ? "text-base" : "text-lg"}`}>
+        <span
+          className={`font-semibold tracking-tight text-stone-900 ${size === "sm" ? "text-base" : "text-lg"} ${wordmarkClassName}`}
+        >
           Rent<span className="text-brand-600">Easy</span>
         </span>
       )}

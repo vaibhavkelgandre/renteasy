@@ -186,6 +186,52 @@ describe("filters live in the URL", () => {
     await waitFor(() => expect(lastBrowseQuery(calls).get("q")).toBe("pulsar"));
   });
 
+  it("keeps the other filters when you search within them", async () => {
+    // The box lives in the header now, so it has no idea what the browse page has
+    // narrowed to — it has to MERGE into the existing query string rather than
+    // rebuild it. Getting this wrong silently drops every filter the moment somebody
+    // types a word, which looks like the filters "randomly reset".
+    const calls = renderBrowse("/?city=Pune&category=cameras");
+    await screen.findByText("Camera 0");
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/search listings/i), "pulsar");
+    await user.click(screen.getByRole("button", { name: /^search$/i }));
+
+    await waitFor(() => {
+      const query = lastBrowseQuery(calls);
+      expect(query.get("q")).toBe("pulsar");
+      expect(query.get("city")).toBe("Pune");
+      expect(query.get("category")).toBe("cameras");
+    });
+  });
+
+  it("sends you to browse when you search from somewhere else", async () => {
+    // New capability, and the reason the box moved into the header: searching used
+    // to require being on browse already.
+    const calls = renderBrowse("/bookings", {
+      "/auth/me": {
+        body: {
+          success: true,
+          message: "OK",
+          data: { user: { id: "u1", name: "Asha Patil", email: "a@b.test", status: "ACTIVE", email_verified_at: "2026-09-01T00:00:00Z" } },
+        },
+      },
+      "/bookings": { body: { success: true, message: "OK", data: { bookings: [], side: "renter" } } },
+    });
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/search listings/i), "drill");
+    await user.click(screen.getByRole("button", { name: /^search$/i }));
+
+    // Nothing from the previous page's URL is carried over — those params belonged
+    // to a different screen.
+    await waitFor(() => {
+      const query = lastBrowseQuery(calls);
+      expect(query.get("q")).toBe("drill");
+    });
+  });
+
   it("converts a typed rupee maximum into whole paise", async () => {
     const calls = renderBrowse();
     await screen.findByText("Camera 0");

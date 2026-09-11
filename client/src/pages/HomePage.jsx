@@ -12,7 +12,10 @@
  * alongside the URL is how those two drift apart.
  *
  * This page used to be an honest placeholder saying no listings existed and promising
- * that "this copy becomes a search bar" when step 3 landed. It has.
+ * that "this copy becomes a search bar" when step 3 landed. It has — and the bar has
+ * since moved to the header, so this page READS `q` from the URL and no longer owns
+ * the control that writes it. The URL is the interface between the two, which is why
+ * moving the box needed no state lifted anywhere.
  */
 
 import { useEffect, useState } from "react";
@@ -180,11 +183,6 @@ export function HomePage() {
 
   const offset = Number(params.get("offset") ?? 0);
 
-  // The one piece of local state: the search box's draft. Typing must not fire a
-  // request per keystroke, so it is committed to the URL on submit.
-  const [searchDraft, setSearchDraft] = useState(q);
-  useEffect(() => setSearchDraft(q), [q]);
-
   /**
    * Writes filters into the URL.
    *
@@ -268,52 +266,22 @@ export function HomePage() {
   const lastOffset = Math.max(0, Math.floor((state.total - 1) / PAGE_SIZE) * PAGE_SIZE);
 
   return (
-    <Page>
-      {/* A HERO, rather than `Page`'s ordinary title block — the one place in the app
-          that earns one. This is the front door for a stranger with no account, and a
-          20px heading on plain stone above a row of dropdowns gave them nothing to
-          arrive at. The wash is `bg-hero` (index.css): a tint of the brand teal, kept
-          faint on purpose, because the photographs below are the colour on this page
-          and a saturated band would compete with the thing being sold.
-
-          Negative margins pull it out to the gutter and up under the header, so it
-          reads as a band across the page rather than a card sitting on one. The
-          matching padding puts the content back where the grid expects it. */}
-      <section className="bg-hero -mx-5 -mt-5 mb-8 rounded-b-3xl px-5 pb-8 pt-10 lg:-mx-8 lg:px-8">
-        <h1 className="max-w-2xl text-3xl font-semibold tracking-tight text-stone-900 sm:text-[2.5rem] sm:leading-[1.1]">
-          Rent almost anything, nearby
-        </h1>
-        <p className="mt-3 max-w-xl text-lg leading-relaxed text-stone-600">
-          By the hour, the day or the month — from people near you.
-        </p>
-
-        {/* The search box is the hero's own control, sized larger than any other
-            input in the app. It is the single thing most visitors will use first. */}
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            apply({ q: searchDraft.trim() });
-          }}
-          className="mt-6 flex max-w-2xl gap-2 rounded-2xl bg-white p-2 shadow-lg shadow-stone-900/5 ring-1 ring-stone-200/80"
-          role="search"
-        >
-          <input
-            type="search"
-            value={searchDraft}
-            onChange={(event) => setSearchDraft(event.target.value)}
-            placeholder="Camera, drill, bike…"
-            aria-label="Search listings"
-            // No border of its own — the wrapper is the visible field. Two nested
-            // borders is what made the old version look like a form control glued
-            // next to a button.
-            className="h-12 w-full rounded-xl bg-transparent px-3 text-[15px] text-stone-900 placeholder:text-stone-400 focus:outline-none"
-          />
-          <Button type="submit" size="md" className="shrink-0 px-6">
-            Search
-          </Button>
-        </form>
-      </section>
-
+    /**
+     * NO HERO, AND THIS REVERSES A DECISION FROM THE PREVIOUS PASS.
+     *
+     * A tinted band with a large heading and the search box in it was added here
+     * because browse is the one page a stranger with no account lands on. The search
+     * box has since moved to the header — where it works from every page — and what
+     * was left was ~180px of heading and wash above the first listing, on the one
+     * page whose entire job is showing listings.
+     *
+     * A hero earns its space by containing something. Without the search box this one
+     * contained a sentence, so it is an ordinary page title again.
+     */
+    <Page
+      title="Rent almost anything, nearby"
+      description="By the hour, the day or the month — from people near you."
+    >
       <div className="grid gap-6 lg:grid-cols-[212px_1fr] xl:grid-cols-[232px_1fr] lg:items-start">
         {/* THE FILTERS ARE A COLUMN, NOT A ROW ACROSS THE TOP.
             As a row they pushed the first result off the screen — six controls plus a
