@@ -18,6 +18,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Page, StatusBadge } from "../components/ui/Page.jsx";
+import { ConditionPhotos } from "../components/booking/ConditionPhotos.jsx";
 import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Alert } from "../components/ui/Alert.jsx";
@@ -44,9 +45,27 @@ const ACTIONS = {
     // has been penalised without being told.
     warning: "Cancelling a booking you accepted counts against your reliability.",
   },
-  START: { label: "Mark as handed over", variant: "primary" },
-  RETURN: { label: "Mark as returned", variant: "primary" },
-  COMPLETE: { label: "Complete", variant: "primary" },
+  /**
+   * Step 8. The wording carries the two-sided design, because the buttons are the
+   * only place a user meets it.
+   *
+   * "I have handed it over" and "I have it" are deliberately first-person claims
+   * rather than neutral verbs: each party is asserting something about themselves,
+   * and the other party's matching claim is what moves the booking on. A neutral
+   * "Start rental" would read as a single button that does the whole thing.
+   */
+  START: {
+    label: "I have handed it over",
+    variant: "primary",
+    prompt: "Anything to note? (optional)",
+  },
+  CONFIRM_RECEIPT: { label: "I have received it", variant: "primary" },
+  RETURN: { label: "I have returned it", variant: "primary" },
+  COMPLETE: {
+    label: "Confirm it came back fine",
+    variant: "primary",
+    prompt: "Anything to note? (optional)",
+  },
 };
 
 const UNIT_LABEL = { hour: "hour", day: "day", month: "month" };
@@ -92,24 +111,49 @@ function Timeline({ events }) {
 export function BookingDetailPage() {
   const { id } = useParams();
   const [state, setState] = useState({ status: "loading", booking: null, error: null });
+  const [photos, setPhotos] = useState([]);
   const [pending, setPending] = useState(null);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
 
+  /**
+   * Both requests together, so one `load()` refreshes the whole screen.
+   *
+   * The photo list has to come back with the booking rather than fetching itself: a
+   * transition can CLOSE a phase for uploads (completing a booking shuts both), so a
+   * photos panel that refreshed independently would keep offering an upload the
+   * server would then refuse.
+   *
+   * `Promise.all`, and photos failing must not take the page down — the booking is
+   * the page, the photos are a panel on it.
+   */
   function load() {
-    return api
-      .get(`/bookings/${id}`)
-      .then((data) => setState({ status: "ready", booking: data.booking, error: null }))
+    return Promise.all([
+      api.get(`/bookings/${id}`),
+      api.get(`/bookings/${id}/photos`).catch(() => ({ photos: [] })),
+    ])
+      .then(([booking, photoData]) => {
+        setState({ status: "ready", booking: booking.booking, error: null });
+        setPhotos(photoData.photos ?? []);
+      })
       .catch((error) => setState({ status: "failed", booking: null, error: error.message }));
   }
 
   useEffect(() => {
     let active = true;
-    api
-      .get(`/bookings/${id}`)
-      .then((data) => active && setState({ status: "ready", booking: data.booking, error: null }))
+
+    Promise.all([
+      api.get(`/bookings/${id}`),
+      api.get(`/bookings/${id}/photos`).catch(() => ({ photos: [] })),
+    ])
+      .then(([booking, photoData]) => {
+        if (!active) return;
+        setState({ status: "ready", booking: booking.booking, error: null });
+        setPhotos(photoData.photos ?? []);
+      })
       .catch((error) => active && setState({ status: "failed", booking: null, error: error.message }));
+
     return () => {
       active = false;
     };
@@ -212,6 +256,16 @@ export function BookingDetailPage() {
               </div>
             )}
           </Card>
+
+          {/* Above the trail, not below it. The photos are something you may still
+              need to ACT on while a booking is live; the trail is a record of what
+              already happened, and records belong last. */}
+          <ConditionPhotos
+            bookingId={booking.id}
+            bookingStatus={booking.status}
+            photos={photos}
+            onChanged={load}
+          />
 
           <Timeline events={booking.events} />
         </div>

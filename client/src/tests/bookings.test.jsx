@@ -273,9 +273,15 @@ describe("the bookings list", () => {
 describe("one booking", () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  const detail = (overrides = {}) => ({
+  const detail = (overrides = {}, photos = []) => ({
     [`/bookings/${BOOKING_ID}`]: {
       body: { success: true, message: "OK", data: { booking: booking(overrides) } },
+    },
+    // Its own key, and the FULL path. `stubFetch` picks the LONGEST matching key, so
+    // a short `/photos` would lose to `/bookings/<uuid>` and the panel would be
+    // handed a booking object where it expects a list.
+    [`/bookings/${BOOKING_ID}/photos`]: {
+      body: { success: true, message: "OK", data: { photos } },
     },
   });
 
@@ -365,5 +371,76 @@ describe("one booking", () => {
     // Unknown id, malformed id, and somebody else's booking all answer identically.
     expect(await screen.findByRole("heading", { name: /booking not found/i })).toBeInTheDocument();
     expect(screen.getByText(/belong to somebody else/i)).toBeInTheDocument();
+  });
+});
+
+describe("condition photos — FR-702", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  const PHOTO = {
+    id: "44444444-4444-4444-8444-444444444444",
+    phase: "HANDOVER",
+    note: "Scratch on the lens barrel",
+    uploadedBy: USER.id,
+    uploadedByName: "Asha Patil",
+    width: 1200,
+    height: 900,
+    createdAt: "2026-10-03T09:00:00.000Z",
+    url: `/api/bookings/${BOOKING_ID}/photos/44444444-4444-4444-8444-444444444444/file`,
+  };
+
+  const detail = (overrides = {}, photos = []) => ({
+    [`/bookings/${BOOKING_ID}`]: {
+      body: { success: true, message: "OK", data: { booking: booking(overrides) } },
+    },
+    [`/bookings/${BOOKING_ID}/photos`]: {
+      body: { success: true, message: "OK", data: { photos } },
+    },
+  });
+
+  it("loads every image from this API, never from the storage provider", async () => {
+    renderApp(
+      `/bookings/${BOOKING_ID}`,
+      detail({ status: "HANDED_OVER", availableActions: [] }, [PHOTO])
+    );
+
+    // These are private assets. A signed provider URL is a bearer credential for as
+    // long as it lives, so the browser must only ever see a path it has to be
+    // authorised for on every request.
+    const image = await screen.findByAltText(/scratch on the lens barrel/i);
+    expect(image).toHaveAttribute("src", PHOTO.url);
+    expect(image.getAttribute("src")).not.toMatch(/cloudinary/i);
+  });
+
+  it("says when a phase has none, differently depending on whether it still could", async () => {
+    renderApp(
+      `/bookings/${BOOKING_ID}`,
+      detail({ status: "HANDED_OVER", availableActions: [] }, [])
+    );
+
+    // Photos are OPTIONAL, so the copy nudges while the moment is live and simply
+    // records the fact once it has passed. Both phases are open at HANDED_OVER, so
+    // both say the nudging version.
+    const nudges = await screen.findAllByText(/no photos yet/i);
+    expect(nudges).toHaveLength(2);
+  });
+
+  it("offers no upload for a phase that has closed", async () => {
+    renderApp(`/bookings/${BOOKING_ID}`, detail({ status: "COMPLETED", availableActions: [] }, [PHOTO]));
+
+    // After completion a new photo is not evidence of the handover, it is evidence of
+    // an argument — and the server refuses it, so the UI must not offer it.
+    expect(await screen.findByAltText(/scratch on the lens barrel/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Add photos$/)).not.toBeInTheDocument();
+    expect(screen.getByText(/no photos were taken/i)).toBeInTheDocument();
+  });
+
+  it("stays out of the way before there is anything to photograph", async () => {
+    renderApp(`/bookings/${BOOKING_ID}`, detail({ status: "REQUESTED", availableActions: [] }, []));
+
+    await screen.findByRole("heading", { name: /history/i });
+    // Nothing has been agreed, so there is no handover to record and an empty panel
+    // would only ask a question the reader cannot answer yet.
+    expect(screen.queryByRole("heading", { name: /^condition$/i })).not.toBeInTheDocument();
   });
 });

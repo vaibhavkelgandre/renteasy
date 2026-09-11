@@ -40,14 +40,20 @@ export class ApiError extends Error {
  *          callers should not have to remember to unwrap.
  * @throws {ApiError} On any non-2xx response, or on an unreachable server.
  */
-async function request(path, { method = "GET", body } = {}) {
+async function request(path, { method = "GET", body, form } = {}) {
   let response;
 
   try {
     response = await fetch(`${BASE}${path}`, {
       method,
+
+      // NO Content-Type FOR A FORM, and this is the one thing about multipart that is
+      // easy to get wrong: `multipart/form-data` needs a boundary parameter, the
+      // browser generates one when it serialises a FormData, and setting the header
+      // by hand overwrites it with a value that has no boundary at all. The server
+      // then cannot parse a body that is perfectly well formed.
       headers: body ? { "Content-Type": "application/json" } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
+      body: form ?? (body ? JSON.stringify(body) : undefined),
 
       // "same-origin" is correct here and "include" would be wrong. Vite proxies /api
       // in development and Nginx does the same in production, so this request IS
@@ -94,6 +100,14 @@ export const api = {
   get: (path) => request(path),
   /** @param {string} path @param {unknown} [body] @returns {Promise<unknown>} */
   post: (path, body) => request(path, { method: "POST", body }),
+  /**
+   * A multipart POST — file uploads.
+   *
+   * @param {string} path
+   * @param {FormData} form
+   * @returns {Promise<unknown>}
+   */
+  postForm: (path, form) => request(path, { method: "POST", form }),
   /** @param {string} path @param {unknown} [body] @returns {Promise<unknown>} */
   patch: (path, body) => request(path, { method: "PATCH", body }),
   /** @param {string} path @returns {Promise<unknown>} */

@@ -88,6 +88,10 @@ const STATUS_TONES = {
   // Bookings
   REQUESTED: { label: "Awaiting reply", tone: "amber" },
   ACCEPTED: { label: "Confirmed", tone: "emerald" },
+  // Amber, like REQUESTED: both mean "waiting on the other person". The item has
+  // gone out but the renter has not said so, which is a state somebody must act on
+  // rather than a settled one.
+  HANDED_OVER: { label: "Awaiting confirmation", tone: "amber" },
   ACTIVE: { label: "Out on rental", tone: "brand" },
   RETURNED: { label: "Returned", tone: "brand" },
   COMPLETED: { label: "Completed", tone: "stone" },
