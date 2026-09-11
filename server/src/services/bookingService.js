@@ -43,6 +43,10 @@ import {
 } from "../config/cloudinary.js";
 import { buildQuote, billableHours } from "../utils/quote.js";
 import {
+  notifyBookingRequested,
+  notifyBookingTransition,
+} from "./notificationService.js";
+import {
   BOOKING_ACTIONS,
   checkTransition,
   roleInBooking,
@@ -225,7 +229,15 @@ export async function requestBooking(actor, { listingId, startsAt, endsAt, messa
     comment: message ?? null,
   });
 
-  return present(await findBookingById(created.id), actor);
+  const booking = await findBookingById(created.id);
+
+  // FR-980's in-app half. AWAITED, unlike the fire-and-forget mail sends elsewhere:
+  // this is one local INSERT, not a network round trip to a provider, so there is no
+  // latency worth trading away — and `notify` swallows its own failures, so awaiting
+  // it cannot fail the request either (FR-985).
+  await notifyBookingRequested(booking);
+
+  return present(booking, actor);
 }
 
 /**
@@ -325,6 +337,18 @@ export async function actOnBooking(id, actor, action, comment = null) {
     toStatus: check.to,
     comment,
   });
+
+  /**
+   * THE SINGLE HOOK. Every state change passes through here, so every notification
+   * for one does too — rather than nine `notify()` calls scattered beside nine
+   * transitions, where the tenth would be forgotten.
+   *
+   * `booking`, not `updated`: the pre-transition row is the one carrying the joined
+   * `listing_title` and `owner_id`, and the recipient is decided by role rather than
+   * by status anyway. AFTER the event is recorded, so a notification never describes
+   * something the trail does not yet contain.
+   */
+  await notifyBookingTransition(booking, action, actor);
 
   return present(updated, actor);
 }
