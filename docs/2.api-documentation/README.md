@@ -104,6 +104,37 @@ their own here.
 | `GET` | `/bookings/:id/photos` | Session (party) | — | `200` `{ photos }` | `404` |
 | `GET` | `/bookings/:id/photos/:photoId/file` | Session (party) | — | `200` image bytes | `404` |
 
+### Messages
+
+Full notes: [features/10-messaging.md](../features/10-messaging.md). Every route is
+scoped by `loadBookingForParty`, so a stranger gets **404, never 403**.
+
+| Method | Path | Auth | Body | Success | Errors |
+|---|---|---|---|---|---|
+| `GET` | `/bookings/messages/unread-count` | Session | — | `200` `{ total, byBooking }` | `401` |
+| `GET` | `/bookings/messages/threads` | Session | — | `200` `{ threads }` | `401` |
+| `GET` | `/bookings/:id/messages` | Session (party) | — (`since`, `before`, `limit`) | `200` `{ messages, canSend, bookingStatus }` | `400`, `404` |
+| `POST` | `/bookings/:id/messages` | Session (party) | `{ body }` or `multipart` — `attachment` + `body` | `201` `{ message }` | `400`, **`409`**, `404` |
+| `POST` | `/bookings/:id/messages/share-contact` | Session (party) | — | `201` `{ message }` | `400`, `409`, `404` |
+| `POST` | `/bookings/:id/messages/:messageId/report` | Session (party) | `{ reason }` | `200` `{ reported }` | `400`, `404` |
+| `GET` | `/bookings/:id/messages/:messageId/file` | Session (party) | — | `200` image bytes | `404` |
+
+**`409` means the thread is closed to new messages** — the booking was declined,
+cancelled or expired, or a completed rental is past its 14-day grace window.
+**Reading is never refused**: `canSend: false` comes back with the full history.
+
+**`GET /messages` marks the thread read** as a side effect — but only when reading
+the live end. Paging back with `before` does not, since scrolling up to re-read an
+old message is not seeing the new one.
+
+**`/threads` is the inbox** — one row per booking that HAS messages, newest activity
+first, carrying the other party's name, your role in it, a preview of the last
+message and an unread count. It takes no id, so there is nothing to scope: the query
+only ever returns bookings the caller is a party to.
+
+**The route order matters.** `/messages/unread-count` and `/messages/threads` are
+declared *before* `/:id/messages`, or the uuid param swallows the literal segment.
+
 ### Notifications
 
 Full notes: [features/09-notifications.md](../features/09-notifications.md). Every route is

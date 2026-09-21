@@ -360,3 +360,42 @@ table, an audit trail or an external provider is one-way, and "I will just undo 
 plan that fails half way through and leaves worse state than either doing nothing or committing
 fully. Either probe against the test database, or accept the write and design the probe so the
 end state is coherent.
+
+## Three unrelated tests failed only in the full suite — a test's cleanup narrowed a CHECK
+
+**Symptom.** Three tests in `messages.test.js` passed alone and failed in the full
+run, all asserting that a notification existed. Nothing in the failure pointed at
+notifications, let alone at a different file.
+
+**Root cause.** `notifications.test.js` proves FR-985 by breaking the
+`notifications` table — dropping its type CHECK and adding one that rejects
+everything — then restoring it in a `finally`. The restore used a **hardcoded list**
+of the ten types that existed when it was written. Migration 010 added an eleventh,
+`BOOKING_MESSAGE`. So every run of that file silently restored a *narrower*
+constraint than the schema had, and from then on, for the rest of the run, message
+notifications were rejected by the database.
+
+**Why it was invisible.** `notify()` swallows its own errors by design (FR-985) — a
+notification failure must never fail the action that triggered it. So the insert was
+refused, the message endpoint still answered `201`, and the only trace was three
+assertions elsewhere finding zero rows.
+
+**The fix: read the definition, restore what you found.**
+
+```sql
+SELECT pg_get_constraintdef(oid) FROM pg_constraint
+ WHERE conname = 'notifications_type_check'
+```
+
+Capture it before the drop, replay it verbatim in the `finally`. It can never drift
+again, because it is no longer a copy.
+
+**This is the migration rule one layer down.** The rules already say a migration
+re-declaring a CHECK list must copy the *newest* version, never an ancestor's —
+the same trap, in a test's cleanup, where nobody thinks to look. **Any test that
+modifies schema must restore what it read, not what it remembered.**
+
+**And the tell worth recognising:** *passes alone, fails in the suite* is almost
+never a flaky test. It is one test leaving state behind. Run the file that failed on
+its own first — if it passes, stop looking at it and go find the file that ran
+before it.
