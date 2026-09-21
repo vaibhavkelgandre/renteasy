@@ -23,6 +23,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { AccountMenu } from "./AccountMenu.jsx";
 import { SearchBox } from "./SearchBox.jsx";
 import { NotificationBell } from "./NotificationBell.jsx";
+import { useUnreadMessages } from "../../hooks/useUnreadMessages.js";
 
 /**
  * The signed-in destinations.
@@ -33,8 +34,13 @@ import { NotificationBell } from "./NotificationBell.jsx";
  */
 const NAV = [
   { to: "/", label: "Browse", end: true },
-  { to: "/listings/mine", label: "Your listings" },
+  // "Listings", not "Your listings". A fourth pill arrived with messaging and the
+  // row does not have room for the longer label — measured at `lg`, where the logo,
+  // search, pills, CTA and avatar are already close. The possessive was doing no
+  // work that the nav's context does not already supply.
+  { to: "/listings/mine", label: "Listings" },
   { to: "/bookings", label: "Bookings" },
+  { to: "/messages", label: "Messages", badge: "messages" },
 ];
 
 /**
@@ -44,14 +50,14 @@ const NAV = [
  * bar, and an underline under a 15px label at the top of a busy page is not — a
  * filled pill is legible in peripheral vision, which is all a nav ever gets.
  */
-function NavItem({ to, label, end }) {
+function NavItem({ to, label, end, unread = 0 }) {
   return (
     <NavLink
       to={to}
       end={end}
       className={({ isActive }) =>
         [
-          "rounded-lg px-3 py-1.5 text-[15px] font-medium transition-colors",
+          "relative rounded-lg px-3 py-1.5 text-[15px] font-medium transition-colors",
           isActive
             ? "bg-white text-stone-900 shadow-sm"
             : "text-stone-600 hover:bg-white/70 hover:text-stone-900",
@@ -59,6 +65,15 @@ function NavItem({ to, label, end }) {
       }
     >
       {label}
+      {unread > 0 && (
+        // A DOT, not a number. The bell already carries a count, and two counting
+        // badges in one bar invites reading them as one figure. This only has to
+        // say "something is waiting" — the inbox itself says how much.
+        <span
+          aria-label={`${unread} unread`}
+          className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-brand-600"
+        />
+      )}
     </NavLink>
   );
 }
@@ -66,6 +81,7 @@ function NavItem({ to, label, end }) {
 export function Header() {
   // `logout` lives in AccountMenu now, so this only needs to know IF there is a user.
   const { user } = useAuth();
+  const unreadMessages = useUnreadMessages(Boolean(user));
 
   return (
     // Sticky, with a translucent background: scrolling a long grid of listings should

@@ -27,6 +27,8 @@ import { BookingRequestPage } from "./pages/BookingRequestPage.jsx";
 import { MyBookingsPage } from "./pages/MyBookingsPage.jsx";
 import { BookingDetailPage } from "./pages/BookingDetailPage.jsx";
 import { NotificationsPage } from "./pages/NotificationsPage.jsx";
+import { MessagesPage } from "./pages/MessagesPage.jsx";
+import { MessageThreadPage } from "./pages/MessageThreadPage.jsx";
 import { Button } from "./components/ui/Button.jsx";
 import { Logo } from "./components/Logo.jsx";
 
@@ -69,6 +71,12 @@ export function App() {
           <Route path="/bookings" element={<MyBookingsPage />} />
           <Route path="/bookings/:id" element={<BookingDetailPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+
+          {/* The inbox and one thread. `/messages/:bookingId` rather than a
+              conversation id, because the booking IS the conversation — there is no
+              second identifier to invent. */}
+          <Route path="/messages" element={<MessagesPage />} />
+          <Route path="/messages/:bookingId" element={<MessageThreadPage />} />
         </Route>
       </Route>
 

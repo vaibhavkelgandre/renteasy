@@ -110,6 +110,7 @@ function Timeline({ events }) {
 
 export function BookingDetailPage() {
   const { id } = useParams();
+
   const [state, setState] = useState({ status: "loading", booking: null, error: null });
   const [photos, setPhotos] = useState([]);
   const [pending, setPending] = useState(null);
@@ -271,6 +272,22 @@ export function BookingDetailPage() {
         </div>
 
         <div className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+          {/* A LINK, NOT THE THREAD ITSELF. The conversation used to render inline
+              here, which put a booking's details, its actions, its photos, a live
+              chat and an audit trail on one screen — five things competing, two of
+              which you act on. The thread has its own page now. */}
+          <Card className="flex flex-wrap items-center justify-between gap-3 p-5 sm:p-6">
+            <div>
+              <h2 className="text-base font-semibold text-stone-900">Messages</h2>
+              <p className="mt-0.5 text-sm text-stone-600">
+                Ask about pickup, condition, anything.
+              </p>
+            </div>
+            <Button as={Link} to={`/messages/${booking.id}`} variant="outline" size="sm">
+              Open
+            </Button>
+          </Card>
+
           <Card className="p-5 sm:p-6">
             <h2 className="text-base font-semibold text-stone-900">
               {isOwner ? "What you receive" : "What you pay"}
