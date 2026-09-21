@@ -53,14 +53,14 @@ export function LoginPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-md px-5 py-10 sm:py-16">
+    <div className="mx-auto my-8 w-full max-w-[26rem] rounded-2xl border border-line bg-surface p-6 sm:my-14 sm:p-8">
       <div className="mb-8 flex justify-center">
         <Link to="/" aria-label="RentEasy home">
           <Logo />
         </Link>
       </div>
 
-      <h1 className="text-center text-2xl font-semibold tracking-tight text-stone-900">
+      <h1 className="text-center text-[1.75rem] font-bold leading-tight tracking-tight text-ink">
         Welcome back
       </h1>
 
@@ -102,7 +102,7 @@ export function LoginPage() {
         <div className="-mt-1 text-right">
           <Link
             to="/forgot-password"
-            className="text-sm font-medium text-brand-700 underline underline-offset-2"
+            className="text-sm font-medium text-accent underline underline-offset-2"
           >
             Forgot your password?
           </Link>
@@ -117,14 +117,14 @@ export function LoginPage() {
           which is exactly how someone whose verification mail never arrived gets back
           to a resend button. Without this line they would assume they are locked out
           and give up. */}
-      <p className="mt-6 text-center text-sm leading-relaxed text-stone-500">
+      <p className="mt-6 text-center text-sm leading-relaxed text-muted">
         Haven&rsquo;t confirmed your email yet? You can still sign in — we&rsquo;ll send
         you a new link.
       </p>
 
-      <p className="mt-6 text-center text-sm text-stone-500">
+      <p className="mt-6 text-center text-sm text-muted">
         New to RentEasy?{" "}
-        <Link to="/register" className="font-medium text-brand-700 underline underline-offset-2">
+        <Link to="/register" className="font-medium text-accent underline underline-offset-2">
           Create an account
         </Link>
       </p>

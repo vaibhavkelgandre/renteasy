@@ -52,14 +52,14 @@ const EMPTY = {
 function SelectField({ label, value, onChange, options, error, hint }) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium text-stone-700">{label}</label>
+      <label className="mb-1.5 block text-sm font-medium text-ink-soft">{label}</label>
       <select
         value={value}
         onChange={onChange}
         aria-invalid={error ? true : undefined}
         className={[
-          "h-12 w-full rounded-xl border bg-white px-4 text-[15px] text-stone-900",
-          error ? "border-rose-400" : "border-stone-300 focus:border-brand-600",
+          "h-12 w-full rounded-xl border bg-surface px-4 text-[15px] text-ink",
+          error ? "border-bad/60" : "border-line-strong focus:border-accent",
         ].join(" ")}
       >
         {options.map((option) => (
@@ -68,8 +68,8 @@ function SelectField({ label, value, onChange, options, error, hint }) {
           </option>
         ))}
       </select>
-      {error && <p className="mt-1.5 text-sm text-rose-600">{error}</p>}
-      {hint && !error && <p className="mt-1.5 text-sm text-stone-500">{hint}</p>}
+      {error && <p className="mt-1.5 text-sm text-bad">{error}</p>}
+      {hint && !error && <p className="mt-1.5 text-sm text-muted">{hint}</p>}
     </div>
   );
 }
@@ -226,7 +226,7 @@ export function ListingFormPage() {
 
   if (!loaded) {
     return (
-      <p className="text-stone-500" role="status">
+      <p className="text-muted" role="status">
         Loading…
       </p>
     );
@@ -234,11 +234,11 @@ export function ListingFormPage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <Link to="/listings/mine" className="text-sm text-stone-500 underline underline-offset-2">
+      <Link to="/listings/mine" className="text-sm text-muted underline underline-offset-2">
         ← Your listings
       </Link>
 
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight text-stone-900">
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight text-ink">
         {isNew ? "List something" : form.title || "Edit listing"}
       </h1>
 
@@ -267,19 +267,19 @@ export function ListingFormPage() {
           <Field label="Title" value={form.title} onChange={update("title")} error={errors.title} />
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-stone-700">Description</label>
+            <label className="mb-1.5 block text-sm font-medium text-ink-soft">Description</label>
             <textarea
               value={form.description}
               onChange={update("description")}
               rows={5}
               aria-invalid={errors.description ? true : undefined}
               className={[
-                "w-full rounded-xl border bg-white px-4 py-3 text-[15px] text-stone-900",
-                errors.description ? "border-rose-400" : "border-stone-300 focus:border-brand-600",
+                "w-full resize-y rounded-xl border bg-raised px-4 py-3 text-[15px] text-ink transition-colors",
+                errors.description ? "border-bad/60" : "border-line focus:border-accent",
               ].join(" ")}
             />
             {errors.description && (
-              <p className="mt-1.5 text-sm text-rose-600">{errors.description}</p>
+              <p className="mt-1.5 text-sm text-bad">{errors.description}</p>
             )}
           </div>
 
@@ -303,10 +303,10 @@ export function ListingFormPage() {
 
         <Card className="space-y-5 p-6 sm:p-7">
           <div>
-            <h2 className="text-base font-semibold text-stone-900">Price</h2>
+            <h2 className="text-base font-semibold text-ink">Price</h2>
             {/* Says the rule out loud rather than only enforcing it. Three empty boxes
                 with no explanation look like three required fields. */}
-            <p className="mt-1 text-sm leading-relaxed text-stone-500">
+            <p className="mt-1 text-sm leading-relaxed text-muted">
               Fill in at least one. Leave the others blank if you do not rent by that
               unit — someone renting for a month should not have to work out 30 × the
               daily rate.
@@ -343,11 +343,11 @@ export function ListingFormPage() {
 
         <Card className="space-y-5 p-6 sm:p-7">
           <div>
-            <h2 className="text-base font-semibold text-stone-900">Where it is</h2>
+            <h2 className="text-base font-semibold text-ink">Where it is</h2>
             {/* FR-113, said to the person it protects. The absence of a street address
                 field is a safety decision, and an owner who does not know that will
                 type their address into "Area" instead. */}
-            <p className="mt-1 text-sm leading-relaxed text-stone-500">
+            <p className="mt-1 text-sm leading-relaxed text-muted">
               An area and a city only — never your street address. This is shown
               publicly. You share the exact spot with one person, after a booking is
               agreed.
@@ -395,10 +395,10 @@ function PublishPanel({ listing, readiness, busy, onToggle }) {
     <Card className="mt-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="font-medium text-stone-900">
+          <p className="font-medium text-ink">
             {isLive ? "This listing is live" : "Not published yet"}
           </p>
-          <p className="mt-1 text-sm text-stone-500">
+          <p className="mt-1 text-sm text-muted">
             {isLive
               ? "Anyone browsing RentEasy can see it."
               : "Only you can see it until you publish."}
@@ -419,12 +419,12 @@ function PublishPanel({ listing, readiness, busy, onToggle }) {
       </div>
 
       {!isLive && blockers.length > 0 && (
-        <div className="mt-5 border-t border-stone-200 pt-4">
-          <p className="text-sm font-medium text-stone-700">Before it can go live:</p>
+        <div className="mt-5 border-t border-line pt-4">
+          <p className="text-sm font-medium text-ink-soft">Before it can go live:</p>
           <ul className="mt-2 space-y-1.5">
             {blockers.map((blocker) => (
-              <li key={blocker} className="flex items-start gap-2 text-sm text-stone-600">
-                <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
+              <li key={blocker} className="flex items-start gap-2 text-sm text-muted">
+                <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent-soft0" />
                 {blocker}
               </li>
             ))}
@@ -505,8 +505,8 @@ function PhotoManager({ listingId, photos, onChanged }) {
 
   return (
     <Card className="mt-5 p-6 sm:p-7">
-      <h2 className="text-base font-semibold text-stone-900">Photos</h2>
-      <p className="mt-1 text-sm leading-relaxed text-stone-500">
+      <h2 className="text-base font-semibold text-ink">Photos</h2>
+      <p className="mt-1 text-sm leading-relaxed text-muted">
         Up to 8, JPEG or PNG, 5MB each. The first one is what people see in the grid —
         use the arrows to change it.
       </p>
@@ -520,11 +520,11 @@ function PhotoManager({ listingId, photos, onChanged }) {
       {photos.length > 0 && (
         <ul className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
           {photos.map((photo, index) => (
-            <li key={photo.id} className="overflow-hidden rounded-xl border border-stone-200">
-              <div className="relative aspect-[4/3] bg-stone-100">
+            <li key={photo.id} className="overflow-hidden rounded-xl border border-line">
+              <div className="relative aspect-[4/3] bg-raised">
                 <img src={photo.thumbUrl} alt="" className="size-full object-cover" loading="lazy" />
                 {index === 0 && (
-                  <span className="absolute left-2 top-2 rounded-full bg-stone-900/80 px-2 py-0.5 text-xs font-medium text-white">
+                  <span className="absolute left-2 top-2 rounded-full bg-canvas/80 px-2 py-0.5 text-xs font-medium text-ink">
                     Cover
                   </span>
                 )}
@@ -566,7 +566,7 @@ function PhotoManager({ listingId, photos, onChanged }) {
         </ul>
       )}
 
-      <label className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50">
+      <label className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-line-strong px-4 py-2.5 text-sm font-medium text-ink-soft hover:bg-raised">
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"

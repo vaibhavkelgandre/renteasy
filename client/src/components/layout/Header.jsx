@@ -1,10 +1,14 @@
 /**
  * The site header.
  *
- * LIGHT, NOT DARK, and that is the opposite choice from an internal tool. A dark app
- * bar says "you are inside a system"; a marketplace wants the opposite — the page
- * should feel like a shop window, and the chrome should get out of the way of the
- * things being rented.
+ * DARK NOW, WHICH REVERSES THIS FILE'S ORIGINAL ARGUMENT. It used to say a light bar
+ * was the opposite choice from an internal tool — that a dark app bar means "you are
+ * inside a system" while a marketplace wants a shop window. That reasoning holds for a
+ * dark bar over a LIGHT page, which is the arrangement it was arguing against. Here
+ * the whole product is dark, so the bar is not a band across the top of anything: it
+ * is the same surface as the page, separated by one hairline. What was true stays
+ * true — the chrome gets out of the way of the things being rented — it is just
+ * achieved by disappearing rather than by being pale.
  *
  * It renders for signed-out visitors too, because browsing needs no account. That is
  * why the right-hand side branches rather than assuming a user.
@@ -34,10 +38,10 @@ import { useUnreadMessages } from "../../hooks/useUnreadMessages.js";
  */
 const NAV = [
   { to: "/", label: "Browse", end: true },
-  // "Listings", not "Your listings". A fourth pill arrived with messaging and the
-  // row does not have room for the longer label — measured at `lg`, where the logo,
-  // search, pills, CTA and avatar are already close. The possessive was doing no
-  // work that the nav's context does not already supply.
+  // "Listings", not "Your listings". A fourth pill arrived with messaging and the row
+  // does not have room for the longer label — measured at `lg`, where the logo,
+  // search, pills, CTA and avatar are already close. The possessive was doing no work
+  // that the nav's context does not already supply.
   { to: "/listings/mine", label: "Listings" },
   { to: "/bookings", label: "Bookings" },
   { to: "/messages", label: "Messages", badge: "messages" },
@@ -46,9 +50,15 @@ const NAV = [
 /**
  * One nav destination.
  *
- * A PILL, not an underline. The current page has to be obvious at a glance on a light
- * bar, and an underline under a 15px label at the top of a busy page is not — a
- * filled pill is legible in peripheral vision, which is all a nav ever gets.
+ * AN UNDERLINE, NOT A PILL — the opposite of the light build, and for a reason that
+ * only applies on a dark ground. A filled pill needs a tinted trough behind the whole
+ * nav to read as *selected* rather than as merely a box, and a trough plus five pills
+ * is five rectangles of chrome in a bar whose job is to disappear. On near-black a 2px
+ * accent rule under the active label is unmissable in peripheral vision and costs no
+ * area at all.
+ *
+ * The rule is positioned against the header's own bottom border so it reads as the
+ * tab being attached to the page below it.
  */
 function NavItem({ to, label, end, unread = 0 }) {
   return (
@@ -57,21 +67,25 @@ function NavItem({ to, label, end, unread = 0 }) {
       end={end}
       className={({ isActive }) =>
         [
-          "relative rounded-lg px-3 py-1.5 text-[15px] font-medium transition-colors",
+          "relative flex h-16 items-center px-3 text-[15px] font-medium transition-colors",
+          // The pseudo-element is the indicator. `scale-x` rather than width so it
+          // grows from the centre, and `origin-center` so it does not slide.
+          "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full",
+          "after:origin-center after:transition-transform after:duration-200",
           isActive
-            ? "bg-white text-stone-900 shadow-sm"
-            : "text-stone-600 hover:bg-white/70 hover:text-stone-900",
+            ? "text-ink after:scale-x-100 after:bg-accent"
+            : "text-muted hover:text-ink after:scale-x-0 after:bg-line-strong hover:after:scale-x-100",
         ].join(" ")
       }
     >
       {label}
       {unread > 0 && (
         // A DOT, not a number. The bell already carries a count, and two counting
-        // badges in one bar invites reading them as one figure. This only has to
-        // say "something is waiting" — the inbox itself says how much.
+        // badges in one bar invites reading them as one figure. This only has to say
+        // "something is waiting" — the inbox itself says how much.
         <span
           aria-label={`${unread} unread`}
-          className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-brand-600"
+          className="ml-1.5 size-1.5 rounded-full bg-accent"
         />
       )}
     </NavLink>
@@ -84,73 +98,78 @@ export function Header() {
   const unreadMessages = useUnreadMessages(Boolean(user));
 
   return (
-    // Sticky, with a translucent background: scrolling a long grid of listings should
-    // never lose the way out, and the blur keeps it feeling light rather than like a
-    // solid bar clamped over the content. Deliberately not a solid fill — content
-    // moving faintly beneath a sticky bar is what stops it looking pasted on.
-    <header className="sticky top-0 z-40 border-b border-stone-200/70 bg-stone-50/80 backdrop-blur-lg">
+    // Sticky, translucent, blurred. Scrolling a long grid of listings should never
+    // lose the way out, and content moving faintly beneath the bar is what stops it
+    // looking pasted on. On a dark palette the blur matters MORE than it did on the
+    // light one: a solid near-black bar over a near-black page is invisible as an
+    // object, so the only thing telling you it is there is the photography sliding
+    // under it.
+    <header className="sticky top-0 z-40 border-b border-line bg-canvas/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-content items-center gap-3 px-5 lg:px-8">
         <Link to="/" aria-label="RentEasy home" className="shrink-0">
           {/* The mark alone below `sm`. The wordmark is ~90px, which on a 375px screen
-              is most of what the search box needs — and the mark still identifies the
+              is most of what the search bar needs — and the mark still identifies the
               site and still goes home. */}
           <Logo size="sm" wordmarkClassName="hidden sm:inline" />
         </Link>
 
-        {/* THE SEARCH BOX, moved here out of the browse hero so the grid gets that
-            vertical space back. It now works from every page, which it did not
+        {/* THE SEARCH BAR, in the header rather than in the browse hero so the grid
+            gets that vertical space back. It works from every page, which it did not
             before: searching from a booking meant navigating to browse first.
 
-            CAPPED at `max-w-md`, and the cap is what creates the gap to its right.
-            Left to `flex-1` alone the form grew until it touched the nav, so the
-            Search button and the first pill sat against each other and read as one
-            crowded cluster. */}
-        <SearchBox className="max-w-md" />
+            CAPPED at `max-w-lg`, and the cap is what creates the gap to its right.
+            Left to `flex-1` alone the form grows until it touches the nav, so the
+            Search button and the first destination sit against each other and read as
+            one crowded cluster. Wider than the old `max-w-md` because the bar now
+            holds two segments instead of one. */}
+        <SearchBox className="max-w-lg" />
 
         {/* ONE right-hand group, and `ml-auto` on it rather than on the nav and the
-            actions separately — with it on both, the slack splits between them and
-            the nav drifts into the middle of the bar as the window widens. */}
-        <div className="ml-auto flex shrink-0 items-center gap-3">
+            actions separately — with it on both, the slack splits between them and the
+            nav drifts into the middle of the bar as the window widens. */}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {user && (
-            // `lg`, not `md` — it was `md` until the search box arrived. Measured: at
-            // 768px the logo, search, three pills, the CTA and the avatar want ~806px
-            // in a 728px row. Something had to give, and the nav is the one whose
-            // destinations are all reachable from the pages themselves, whereas the
-            // search box is reachable from nowhere else. A nav that wraps onto a
-            // second line is worse than one that waits for the room.
+            // `lg`, not `md`. Measured: at 768px the logo, search, four destinations,
+            // the CTA and the avatar want ~806px in a 728px row. Something has to
+            // give, and the nav is the one whose destinations are all reachable from
+            // the pages themselves, whereas the search bar is reachable from nowhere
+            // else. A nav that wraps onto a second line is worse than one that waits
+            // for the room.
             //
-            // The tinted trough is what makes the active pill read as *selected*
-            // rather than as merely a white box — it needs something to sit on.
-            <nav
-              aria-label="Main"
-              className="hidden items-center gap-1 rounded-xl bg-stone-200/50 p-1 lg:flex"
-            >
+            // `self-stretch` so each item is the full 64px of the bar — that is what
+            // lets the active indicator sit on the header's own bottom edge.
+            <nav aria-label="Main" className="hidden self-stretch lg:flex">
               {NAV.map((item) => (
-                <NavItem key={item.to} {...item} />
+                <NavItem
+                  key={item.to}
+                  {...item}
+                  unread={item.badge === "messages" ? unreadMessages : 0}
+                />
               ))}
             </nav>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pl-1">
             {user ? (
               <>
-                {/* THE PRIMARY ACTION, and it is the supply side. On a two-sided
-                    marketplace the scarce side is people willing to lend, so listing
-                    is what earns a filled button on every page. */}
-                {/* Before the CTA, after the nav. The bell is a thing that happens
-                    TO you, so it belongs with the account cluster rather than among
-                    the destinations — and it stays visible on every screen width,
-                    unlike "List an item", because missing a booking request is
-                    worse than having to find the button to make a listing. */}
+                {/* The bell is a thing that happens TO you, so it belongs with the
+                    account cluster rather than among the destinations — and it stays
+                    visible at every width, unlike "List an item", because missing a
+                    booking request is worse than having to hunt for the button that
+                    makes a listing. */}
                 <NotificationBell />
 
+                {/* THE PRIMARY ACTION, and it is the supply side. On a two-sided
+                    marketplace the scarce side is people willing to lend, so listing
+                    is what earns the one filled button on every page. */}
                 <Button as={Link} to="/listings/new" size="sm" className="hidden sm:inline-flex">
                   List an item
                 </Button>
-                {/* ONE control for the account, not two. "Account" and "Sign out"
-                    used to sit side by side, which spent twice the width of a phone
-                    header on something used rarely - and left a destructive action
-                    one stray tap away on every page. Both live behind the initials. */}
+
+                {/* ONE control for the account, not two. "Account" and "Sign out" used
+                    to sit side by side, which spent twice the width of a phone header
+                    on something used rarely — and left a destructive action one stray
+                    tap away on every page. Both live behind the initials. */}
                 <AccountMenu />
               </>
             ) : (

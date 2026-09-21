@@ -36,12 +36,19 @@ const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
  * notice period reads as blocked, because that is the fact the owner can act on.
  */
 const DAY_TONES = {
-  BOOKING: "bg-brand-100 text-brand-900",
-  BLACKOUT: "bg-amber-100 text-amber-900",
-  // A renter is told only that it is taken. Same grey for both kinds.
-  TAKEN: "bg-stone-200 text-stone-500",
-  NOTICE: "bg-stone-50 text-stone-300 line-through",
-  FREE: "text-stone-700",
+  // SOMEBODY ELSE'S MONEY IS ON THIS DAY, so it gets the accent — the one colour in
+  // the product that means "something is happening here".
+  BOOKING: "bg-accent-soft text-accent",
+  // The owner held this day back themselves. Deliberately NOT a second hue: a
+  // blackout is an absence of activity, not a different kind of it, so it reads as a
+  // neutral hold with an edge. The ring is what keeps it distinguishable from an
+  // ordinary free day at a glance, now that it is no longer tinted.
+  BLACKOUT: "bg-sunken text-ink-soft ring-1 ring-inset ring-line-strong",
+  // A renter is told only that it is taken, so this is the same neutral fill without
+  // the ring — there is no second state for them to tell it apart from.
+  TAKEN: "bg-sunken text-muted",
+  NOTICE: "text-faint line-through",
+  FREE: "text-ink-soft",
 };
 
 /**
@@ -113,12 +120,12 @@ export function AvailabilityCalendar({ unavailable, bookableFrom }) {
           // most common way to end up staring at an empty calendar wondering why.
           disabled={month <= startOfMonth(today)}
           aria-label="Previous month"
-          className="grid size-8 place-items-center rounded-lg text-stone-500 hover:bg-stone-100 disabled:opacity-30 disabled:hover:bg-transparent"
+          className="grid size-8 place-items-center rounded-lg text-muted hover:bg-raised disabled:opacity-30 disabled:hover:bg-transparent"
         >
           ‹
         </button>
 
-        <p className="font-medium text-stone-900" aria-live="polite">
+        <p className="font-medium text-ink" aria-live="polite">
           {formatMonth(month)}
         </p>
 
@@ -126,13 +133,13 @@ export function AvailabilityCalendar({ unavailable, bookableFrom }) {
           type="button"
           onClick={() => setMonth(addMonths(month, 1))}
           aria-label="Next month"
-          className="grid size-8 place-items-center rounded-lg text-stone-500 hover:bg-stone-100"
+          className="grid size-8 place-items-center rounded-lg text-muted hover:bg-raised"
         >
           ›
         </button>
       </div>
 
-      <div className="mt-3 grid grid-cols-7 gap-1 text-center text-xs text-stone-400">
+      <div className="mt-3 grid grid-cols-7 gap-1 text-center text-xs text-faint">
         {WEEKDAYS.map((letter, index) => (
           // The index is a legitimate key here: the array is a fixed seven-item
           // constant, and two of its labels are the literal same string.
@@ -185,16 +192,16 @@ export function AvailabilityCalendar({ unavailable, bookableFrom }) {
         })}
       </div>
 
-      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
+      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
         {showsKind ? (
           <>
-            <Key className="bg-brand-100" label="Booked" />
-            <Key className="bg-amber-100" label="Blocked by you" />
+            <Key className="bg-accent-soft" label="Booked" />
+            <Key className="bg-sunken ring-1 ring-inset ring-line-strong" label="Blocked by you" />
           </>
         ) : (
-          <Key className="bg-stone-200" label="Unavailable" />
+          <Key className="bg-sunken" label="Unavailable" />
         )}
-        {noticeUntil != null && <Key className="bg-stone-50 ring-1 ring-stone-200" label="Too soon" />}
+        {noticeUntil != null && <Key className="bg-raised ring-1 ring-line" label="Too soon" />}
       </ul>
     </div>
   );

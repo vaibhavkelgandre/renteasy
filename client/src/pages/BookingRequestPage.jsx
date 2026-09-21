@@ -13,8 +13,7 @@
 
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Page } from "../components/ui/Page.jsx";
-import { Card } from "../components/ui/Card.jsx";
+import { Page, Section } from "../components/ui/Page.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Field } from "../components/ui/Field.jsx";
 import { Alert } from "../components/ui/Alert.jsx";
@@ -30,26 +29,31 @@ const UNIT_LABEL = { hour: "hour", day: "day", month: "month" };
 /** The itemised bill — FR-401. Rendered from the server's numbers, never recomputed. */
 function QuoteBreakdown({ quote }) {
   return (
-    <Card className="p-5 sm:p-6">
-      <h2 className="text-base font-semibold text-stone-900">What it costs</h2>
+    // THE ONE ENCLOSURE ON THIS PAGE. Everything else here is a field you fill in;
+    // this is the answer, and it is what somebody scrolls back up to check before
+    // pressing the button.
+    <div className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
+      <h2 className="text-sm font-semibold uppercase tracking-[0.08em] text-muted">
+        What it costs
+      </h2>
 
       <dl className="mt-4 space-y-2.5">
         {quote.lines.map((line) => (
           <div key={line.unit} className="flex items-baseline justify-between gap-4 text-sm">
-            <dt className="text-stone-600">
+            <dt className="text-muted">
               {line.quantity} × {UNIT_LABEL[line.unit]}
               {line.quantity === 1 ? "" : "s"}
-              <span className="text-stone-400"> at {formatPaise(line.unitPricePaise)}</span>
+              <span className="text-faint"> at {formatPaise(line.unitPricePaise)}</span>
             </dt>
-            <dd className="shrink-0 tabular-nums text-stone-900">
+            <dd className="shrink-0 tabular-nums text-ink">
               {formatPaise(line.subtotalPaise)}
             </dd>
           </div>
         ))}
 
-        <div className="flex items-baseline justify-between gap-4 border-t border-stone-200 pt-2.5 text-sm">
-          <dt className="font-medium text-stone-700">Rent</dt>
-          <dd className="shrink-0 font-medium tabular-nums text-stone-900">
+        <div className="flex items-baseline justify-between gap-4 border-t border-line pt-2.5 text-sm">
+          <dt className="font-medium text-ink-soft">Rent</dt>
+          <dd className="shrink-0 font-medium tabular-nums text-ink">
             {formatPaise(quote.rentPaise)}
           </dd>
         </div>
@@ -58,19 +62,22 @@ function QuoteBreakdown({ quote }) {
           <div className="flex items-baseline justify-between gap-4 text-sm">
             {/* FR-402 — separate from rent and labelled, because a renter comparing two
                 listings needs to know which part comes back to them. */}
-            <dt className="text-stone-600">
-              Deposit <span className="text-stone-400">refundable</span>
+            <dt className="text-muted">
+              Deposit <span className="text-faint">refundable</span>
             </dt>
-            <dd className="shrink-0 tabular-nums text-stone-900">
+            <dd className="shrink-0 tabular-nums text-ink">
               {formatPaise(quote.depositPaise)}
             </dd>
           </div>
         )}
       </dl>
 
-      <div className="mt-4 flex items-baseline justify-between gap-4 border-t border-stone-200 pt-4">
-        <span className="font-medium text-stone-900">You pay</span>
-        <span className="text-lg font-semibold tabular-nums text-stone-900">
+      {/* The total is set at twice the size of the lines above it. On a page whose
+          whole purpose is "do I want to pay this", the figure being decided should not
+          be the same weight as its own arithmetic. */}
+      <div className="mt-4 flex items-baseline justify-between gap-4 border-t border-line pt-4">
+        <span className="text-sm font-semibold text-ink">You pay</span>
+        <span className="tabular text-2xl font-bold tracking-tight text-ink">
           {formatPaise(quote.renterTotalPaise)}
         </span>
       </div>
@@ -78,12 +85,12 @@ function QuoteBreakdown({ quote }) {
       {/* Six hours billed as a day covers 24. Said out loud, or it reads as an
           overcharge rather than as the cheapest option. */}
       {quote.coveredHours > quote.requestedHours && (
-        <p className="mt-3 text-sm leading-relaxed text-stone-500">
+        <p className="mt-3 text-sm leading-relaxed text-muted">
           You asked for {quote.requestedHours} hours; the cheapest combination covers{" "}
           {quote.coveredHours}. You are charged the lower price, not the longer one.
         </p>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -173,7 +180,7 @@ export function BookingRequestPage() {
       back={
         <Link
           to={`/listings/${id}`}
-          className="text-sm text-stone-500 underline underline-offset-2"
+          className="text-sm text-muted underline underline-offset-2"
         >
           ← Back to the listing
         </Link>
@@ -185,10 +192,8 @@ export function BookingRequestPage() {
         </Alert>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-        <Card className="space-y-5 p-5 sm:p-6">
-          <h2 className="text-base font-semibold text-stone-900">When</h2>
-
+      <form onSubmit={handleSubmit} className="space-y-8" noValidate>
+        <Section title="When">
           {/* Two columns from `sm` up: the two halves of one range belong side by side,
               and stacking them on a wide screen wastes the width this page has. */}
           <div className="grid gap-5 sm:grid-cols-2">
@@ -208,27 +213,34 @@ export function BookingRequestPage() {
             />
           </div>
 
-          {quote.status === "failed" && <Alert tone="error">{quote.error}</Alert>}
+          {quote.status === "failed" && (
+            <Alert tone="error" className="mt-4">
+              {quote.error}
+            </Alert>
+          )}
 
           {/* Reported rather than enforced client-side. The server owns the rule; this
               only saves a round trip and explains what to change. */}
           {quote.blockers.map((blocker) => (
-            <Alert key={blocker} tone="warning">
+            <Alert key={blocker} tone="warning" className="mt-4">
               {blocker}
             </Alert>
           ))}
-        </Card>
+        </Section>
 
         {quote.status === "ready" && <QuoteBreakdown quote={quote.data} />}
 
-        <Card className="space-y-4 p-5 sm:p-6">
+        <Section
+          title="Message to the owner"
+          actions={<span className="text-xs text-faint">optional</span>}
+        >
           <div>
-            <label
-              htmlFor="booking-message"
-              className="mb-1.5 flex items-baseline gap-2 text-sm font-medium text-stone-700"
-            >
+            {/* The label is `sr-only`: the section heading above already says what this
+                field is, and a visible label repeating it two lines later is the kind
+                of duplication that makes a form look longer than it is. The element
+                still exists, because an input a screen reader cannot name is a bug. */}
+            <label htmlFor="booking-message" className="sr-only">
               Message to the owner
-              <span className="text-xs font-normal text-stone-400">optional</span>
             </label>
             <textarea
               id="booking-message"
@@ -236,19 +248,19 @@ export function BookingRequestPage() {
               onChange={update("message")}
               rows={4}
               placeholder="What you need it for, and when you could collect."
-              className="w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-[15px] text-stone-900 placeholder:text-stone-400 focus:border-brand-600"
+              className="w-full resize-y rounded-xl border border-line bg-raised px-4 py-3 text-[15px] text-ink transition-colors placeholder:text-faint focus:border-accent"
             />
-            <p className="mt-1.5 text-sm text-stone-500">
+            <p className="mt-1.5 text-sm text-muted">
               The single most useful thing an owner reads when deciding.
             </p>
           </div>
-        </Card>
+        </Section>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-4 border-t border-line pt-6">
           <Button type="submit" size="lg" loading={submitting} disabled={blocked}>
             Send request
           </Button>
-          <p className="text-sm text-stone-500">
+          <p className="text-sm text-muted">
             Nothing is charged. The owner has 48 hours to reply.
           </p>
         </div>

@@ -133,7 +133,13 @@ describe("browsing without an account", () => {
 
   it("reports the total, not the page size", async () => {
     renderBrowse("/", { "/listings?": browseResponse(2, 57) });
-    expect(await screen.findByText(/57 listings/)).toBeInTheDocument();
+    // Read off the live region rather than matched as one string: the count and the
+    // word are deliberately two elements, because the number is the only tabular
+    // figure in the line and is set heavier than "listings" beside it. Asserting on
+    // the region's whole text keeps this a test of the REPORTED TOTAL rather than of
+    // how the two halves happen to be marked up.
+    const total = await screen.findByRole("status");
+    expect(total.textContent.replace(/\s+/g, " ")).toContain("57 listings");
   });
 });
 

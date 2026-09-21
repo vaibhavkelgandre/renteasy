@@ -1,73 +1,143 @@
 /**
- * Global styles and design tokens.
+ * The design system. Every colour in this application is named here and nowhere else.
  *
- * Tailwind v4 configures itself from CSS — anything in `@theme` becomes a utility
- * class, so `--color-brand-600` gives you `bg-brand-600`, `text-brand-600`,
- * `border-brand-600`.
+ * Tailwind v4 configures itself from CSS: anything declared in `@theme` becomes a
+ * utility, so `--color-surface` gives `bg-surface`, `text-surface`, `border-surface`.
+ * That is what makes a SEMANTIC palette practical — components say what a colour is
+ * *for* (`bg-surface`, `text-muted`, `border-line`) rather than which grey it is, and
+ * the palette can be retuned in this file without opening a component.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE PALETTE IS SEMANTIC AND NOT A SCALE
+ *
+ * The previous build used Tailwind's `stone` ramp directly: `text-stone-900` for
+ * headings, `text-stone-500` for metadata, `bg-white` for cards. That works exactly
+ * until the ground goes dark, at which point `text-stone-900` means "invisible" and
+ * every one of ~600 usages has to be re-decided individually.
+ *
+ * A name cannot go stale that way. `text-ink` is the colour you read; it is near-black
+ * on a light ground and near-white on this one, and the component never had an opinion
+ * either way.
+ * ---------------------------------------------------------------------------
  */
 
 @import "tailwindcss";
 
 @theme {
-  /* ---- Identity: teal on warm stone ----
+  /* ======================================================================
+   * NEUTRALS — four steps of surface, four of text.
    *
-   * A CONSUMER MARKETPLACE, and both halves of the palette follow from that.
+   * Not a 50-950 ramp. A ramp invites picking by feel, which is how one card ends up
+   * `stone-100` and the next `stone-50` for no reason anybody can reconstruct. Four
+   * named surfaces is a decision that gets made once.
    *
-   * Teal reads as trust and availability — the green family without the "success
-   * message" connotation of emerald, and without blue's corporate-software feel. It is
-   * also distinct from the two colours that dominate this space: Airbnb's coral and
-   * every booking site's blue.
+   * The steps are deliberately CLOSE TOGETHER. On a dark interface the eye reads
+   * small luminance differences as depth, and large ones as separate panels floating
+   * in space — which is the "everything is a card" look. 3-4% between neighbours is
+   * enough to separate a surface from its ground without drawing a box.
    *
-   * Stone rather than zinc or slate: it is a WARM grey. On a page where a stranger
-   * decides whether to lend you a ₹80,000 camera, warm neutrals read as friendly and
-   * cool ones read as administrative. That difference is the whole reason not to reuse
-   * an internal tool's palette here.
-   */
-  --color-brand-50: #f0fdfa;
-  --color-brand-100: #ccfbf1;
-  --color-brand-200: #99f6e4;
-  --color-brand-400: #2dd4bf;
-  --color-brand-500: #14b8a6;
-  --color-brand-600: #0d9488;
-  --color-brand-700: #0f766e;
-  --color-brand-800: #115e59;
+   * Every one carries a trace of blue (hue ~230) rather than being pure grey. Neutral
+   * #101010 next to a warm photograph looks brown; a faintly cool ground makes the
+   * accent read as warm and keeps photography looking colour-accurate.
+   * ====================================================================== */
 
-  /* ---- Type ----
+  /* The page itself. Nothing sits behind this. */
+  --color-canvas: #0a0b0d;
+  /* Cards, the header, anything that holds content. */
+  --color-surface: #111318;
+  /* A surface ON a surface: inputs, hovered rows, a nested panel. */
+  --color-raised: #171a21;
+  /* One step further in, for a well inside a card — a price breakdown, a quoted reply. */
+  --color-sunken: #1c2029;
+
+  /* Borders. `line` is the default and is almost invisible on purpose — it separates
+   * without drawing. `line-strong` is for something that must read as an edge: a
+   * focused input, a selected thumbnail, a divider carrying real structure. */
+  --color-line: #23262e;
+  --color-line-strong: #333843;
+
+  /* Text, in four weights of presence.
    *
-   * System stack: no download, no blocked first paint, no reflow. Looks native on
-   * every device, which matters more on a consumer site reached from a phone than a
-   * distinctive typeface would.
-   */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+   * NOT pure #FFFFFF for the brightest step. White on near-black is the classic dark
+   * mode mistake: the contrast is so high it haloes and is genuinely tiring to read
+   * for more than a paragraph. #F2F3F5 keeps the ratio well past AA and stops the
+   * shimmer. */
+  --color-ink: #f2f3f5; /* headings, prices, anything you must not miss */
+  --color-ink-soft: #c5c8cf; /* body copy */
+  --color-muted: #8b8f9a; /* metadata, labels, supporting detail */
+  --color-faint: #5f636d; /* placeholders, disabled, decoration */
+
+  /* ======================================================================
+   * ACCENT — amber. Exactly one.
+   *
+   * WHY AMBER AND NOT TEAL (which this app used) OR PURPLE: on a near-black ground a
+   * cool accent recedes and reads as a link, while a warm one advances and reads as
+   * an action. This is a marketplace whose whole surface is photographs of objects,
+   * and warm light over them reads as a shop window rather than as software. Purple
+   * is the tell of a generated interface and is avoided deliberately.
+   *
+   * Slightly desaturated from a pure orange: fully saturated orange on black is a
+   * warning label. This is the colour of a filament bulb, which is the intended
+   * feeling.
+   *
+   * IT IS ALSO THE "NEEDS YOU" COLOUR (see the status tones below), and that overlap
+   * is intentional rather than a collision. The accent means "this is where you act".
+   * A booking waiting on your reply is exactly that.
+   * ====================================================================== */
+  --color-accent: #f5a524;
+  --color-accent-hover: #ffb84a;
+  --color-accent-press: #d98c14;
+  /* A wash for a tinted pill or a selected row. Expressed as a solid hex rather than
+   * an alpha so it composites identically over every surface step — a translucent
+   * tint over `surface` and over `raised` are two different colours, and that is
+   * visible the moment a selected row sits next to a selected chip. */
+  --color-accent-soft: #2a2114;
+  --color-accent-line: #5c4415;
+  /* Text ON the accent. Near-black, never white: white on amber fails contrast badly
+   * and is the single most common accessibility defect in an amber interface. */
+  --color-accent-ink: #1a1206;
+
+  /* ======================================================================
+   * STATUS — two hues, plus the accent.
+   *
+   * A marketplace cannot do without these: "confirmed", "declined" and "waiting" are
+   * different in kind, not in emphasis, and one accent cannot say which. Three
+   * meanings is the floor rather than decoration — the brief's "no 5-6 bright
+   * colours" is about arbitrary variety, not about semantics. "Waiting" IS the
+   * accent, so only two extra hues are defined here.
+   *
+   * Each is a pair: a `-soft` fill and a readable foreground on it. Both are mixed
+   * toward the canvas so a badge sits IN the page rather than glowing on top of it.
+   * ====================================================================== */
+  --color-good: #4ade80;
+  --color-good-soft: #10281a;
+  --color-bad: #fb7185;
+  --color-bad-soft: #2b1219;
+
+  /* ======================================================================
+   * TYPE
+   * ====================================================================== */
+  --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
 
-  /* Prices, rental periods and item counts.
-   *
-   * Money is the thing people compare on a marketplace — ₹800/day against ₹15,000/month
-   * — and comparison needs digits that line up. Tabular figures are what make a column
-   * of prices scannable instead of ragged. */
+  /* Prices, durations and counts are set in the SAME family with tabular figures
+   * switched on (see `.tabular`) rather than in a monospace, which would look like a
+   * receipt. Manrope's own digits are even enough to set money in. */
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo,
     Consolas, monospace;
 
-  /* ---- The content column ----
+  /* ======================================================================
+   * THE CONTENT COLUMN
    *
    * ONE TOKEN, BECAUSE FOUR PLACES NEED THE SAME NUMBER: the header, the verification
-   * banner, `AppLayout`'s main, and `Page`'s `full` width. They were four hardcoded
-   * `max-w-6xl`s, so widening the content alone would have left the logo and the
-   * banner ending 150px short of it — a misalignment that reads as a rendering bug
-   * rather than as a width someone forgot.
-   *
-   * 1440px, up from 1152. The old value was chosen so a grid of product cards would
-   * not sprawl, and on a 1920px monitor it instead left ~380px of empty stone down
-   * each side while the cards it was protecting sat cramped three-across. 1440 is
-   * where the major marketplaces land for the same reason: wide enough that a laptop
-   * has no dead margin, capped so a 2560px display does not stretch a row of cards
-   * into a horizon.
+   * banner, `AppLayout`'s main, and `Page`'s `full` width. As four hardcoded values
+   * they drifted, and the logo ended 150px short of the content under it — which
+   * reads as a rendering bug rather than as a width someone forgot.
    *
    * `--container-*` is the Tailwind v4 namespace behind `max-w-*`, so this is
-   * `max-w-content`. Deliberately NOT a `--breakpoint-*`: this is how wide the
-   * content may grow, not a point at which the layout changes.
-   */
+   * `max-w-content`. Deliberately NOT a `--breakpoint-*`: this is how wide content
+   * may grow, not a point at which the layout changes.
+   * ====================================================================== */
   --container-content: 1440px;
 }
 
@@ -76,13 +146,14 @@
     /* Stops the layout shifting sideways when a page grows tall enough to gain a
      * scrollbar — very visible when browsing a grid of listings. */
     scrollbar-gutter: stable;
+    /* Firefox. Chrome is handled by the ::-webkit rules below. Without this the
+     * browser draws a light scrollbar down a black page. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
   }
 
   body {
-    /* stone-50, not white. A page of white cards on a white background has no
-     * structure; a faintly warm ground gives every card an edge without borders
-     * everywhere. */
-    @apply bg-stone-50 font-sans text-stone-900 antialiased;
+    @apply bg-canvas font-sans text-ink-soft antialiased;
 
     /* 16px base, deliberately not 14px. An internal tool optimises for density
      * because its users are in it all day; a consumer marketplace optimises for
@@ -90,12 +161,40 @@
     font-size: 16px;
   }
 
+  /* Chrome/Safari. Thin, no track, thumb only — the same treatment everywhere, so a
+   * scrolling panel inside a card does not get a different scrollbar from the page. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-line-strong;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-faint;
+  }
+
   /* Every focus ring in the app, in one rule.
    *
    * `:focus-visible` rather than `:focus`, so a mouse click does not leave a ring
-   * behind — which is what makes people delete focus styles altogether. */
+   * behind — which is what makes people delete focus styles altogether.
+   *
+   * The ring is the ACCENT and not a neutral: on a dark ground a grey ring is nearly
+   * invisible, which turns keyboard navigation into guesswork. */
   *:focus-visible {
-    @apply outline-2 outline-offset-2 outline-brand-600;
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+
+  /* Text selection. The browser default is a bright blue block that belongs to no
+   * palette and is otherwise the last untreated surface in a dark interface. */
+  ::selection {
+    background: var(--color-accent-line);
+    color: var(--color-ink);
   }
 }
 
@@ -105,52 +204,72 @@
    *
    * A NATIVE SELECT IS THE SINGLE BIGGEST "OLD FASHIONED" TELL in an otherwise modern
    * page: the browser draws its own chevron, its own inset border and its own height,
-   * none of which match anything else on screen, and all of which look like Windows
-   * 98 sitting inside a rounded card. Every other control here was styled; the selects
-   * were left native and dragged the whole page back with them.
+   * none of which match anything else on screen. On a dark page it is worse than
+   * that — an untreated select renders as a white box, so it stops being a stylistic
+   * problem and becomes a visible hole.
    *
    * `appearance: none` removes the widget entirely, so the chevron has to be supplied
    * — an inline data-URI SVG rather than an icon component, because a background
    * image cannot be a React element and a file would be a request for 200 bytes.
-   * `padding-right` reserves the space so a long option never runs under it.
    *
    * Only the closed control is ours. The open dropdown list is drawn by the operating
-   * system and no CSS can reach it, which is the accepted cost of not shipping a
-   * custom listbox with its own keyboard handling and accessibility surface.
+   * system; `color-scheme: dark` on the document is what stops THAT being white, and
+   * is why the meta tag in index.html is not optional.
    */
   select {
     @apply appearance-none bg-no-repeat pr-9;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2378716c' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%238b8f9a' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-position: right 0.6rem center;
     background-size: 1.1rem;
   }
 
-  /* Date and time inputs have the same problem, one layer down: the picker button is
-   * the browser's, and in Chrome it is a small grey glyph that ignores the field's
-   * own colour. This at least tints it to match. */
+  /* Date inputs have the same problem one layer down: the picker button is the
+   * browser's, and in Chrome it is a dark glyph that disappears entirely against a
+   * dark field. `invert` is the only way to reach it. */
   input[type="date"]::-webkit-calendar-picker-indicator,
   input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-    @apply cursor-pointer opacity-60 transition-opacity;
+    @apply cursor-pointer opacity-50 transition-opacity;
+    filter: invert(1);
   }
 
   input[type="date"]::-webkit-calendar-picker-indicator:hover,
   input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
-    @apply opacity-100;
+    @apply opacity-90;
   }
 }
 
 @layer utilities {
-  /* Every digit the same width, so a column of prices aligns instead of ragging. */
+  /* Every digit the same width, so a column of prices aligns instead of ragging.
+   * Money is what people compare on a marketplace, and comparison needs the decimal
+   * points to line up. */
   .tabular {
     font-variant-numeric: tabular-nums;
   }
 
-  /* The warm wash behind the browse hero and the signed-out call to action.
-   * A tint of the brand teal over the stone ground, not a saturated block — the
-   * photographs are the colour on this page and a loud band would compete. */
-  .bg-hero {
+  /**
+   * The warm wash behind the browse header and the signed-out call to action.
+   *
+   * Two very wide, very soft radial gradients — one amber, one cool — at under 10%
+   * opacity. NOT a "gradient" in the decorative sense the brief warns about: at this
+   * strength it does not read as a shape, it only stops the top of the page being a
+   * flat black rectangle. The test is that you cannot point at where it ends.
+   */
+  .bg-glow {
     background-image:
-      radial-gradient(60rem 22rem at 12% -10%, rgb(204 251 241 / 0.75), transparent 60%),
-      radial-gradient(48rem 20rem at 92% 0%, rgb(245 245 244 / 0.9), transparent 55%);
+      radial-gradient(52rem 24rem at 8% 0%, rgb(245 165 36 / 0.11), transparent 62%),
+      radial-gradient(44rem 20rem at 88% 8%, rgb(120 160 255 / 0.07), transparent 58%);
+
+    /* THE SIZE AND POSITION ARE NOT OPTIONAL, and getting this wrong is invisible on
+     * a short page and obvious on a long one. `background-size` defaults to the whole
+     * element, and this class is on the app frame — so on a page three screens tall
+     * the gradients are scaled to three screens too, which spreads the wash across
+     * the entire scroll and turns a top-of-page glow into a faint tint everywhere.
+     *
+     * Pinning the layer to 720px tall, top-aligned and unrepeated keeps it where it
+     * was designed to be: behind the header and the first screenful, gone by the time
+     * you are reading a listing. */
+    background-size: 100% 720px;
+    background-position: top center;
+    background-repeat: no-repeat;
   }
 }

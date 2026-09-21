@@ -10,7 +10,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Alert } from "../components/ui/Alert.jsx";
 import { Button } from "../components/ui/Button.jsx";
-import { Card } from "../components/ui/Card.jsx";
 import { Page } from "../components/ui/Page.jsx";
 import { api } from "../lib/api.js";
 import { formatWhen } from "../lib/dates.js";
@@ -76,35 +75,36 @@ export function NotificationsPage() {
       {state.status === "failed" && <Alert tone="error">{state.error}</Alert>}
 
       {state.status === "loading" && (
-        <p className="text-stone-500" role="status">
+        <p className="text-muted" role="status">
           Loading…
         </p>
       )}
 
       {state.status === "ready" && state.items.length === 0 && (
-        <Card className="p-10 text-center">
-          <h2 className="text-lg font-semibold text-stone-900">Nothing yet</h2>
-          <p className="mx-auto mt-2 max-w-sm leading-relaxed text-stone-600">
+        <div className="py-16 text-center">
+          <h2 className="text-xl font-bold text-ink">Nothing yet</h2>
+          <p className="mx-auto mt-2 max-w-sm leading-relaxed text-muted">
             When somebody asks to rent your things, or an owner replies to you, it will show up
             here.
           </p>
-          <Button as={Link} to="/" variant="outline" className="mt-6">
+          <Button as={Link} to="/" variant="outline" className="mt-7">
             Browse listings
           </Button>
-        </Card>
+        </div>
       )}
 
       {state.items.length > 0 && (
-        <Card className="overflow-hidden">
-          <ul className="divide-y divide-stone-100">
+        <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
             {state.items.map((item) => (
               <li key={item.id}>
                 <Link
                   to={destination(item)}
                   onClick={() => open(item)}
                   className={[
-                    "flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-stone-50",
-                    item.read_at ? "" : "bg-brand-50/50",
+                    "flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-raised",
+                    // No row tint for unread. The dot below already says it, and a
+                    // wash across the row is both louder than the message it is
+                    // marking and cancelled out by the hover state painting over it.
                   ].join(" ")}
                 >
                   {/* A dot rather than bold text for "unread": bold on a two-line
@@ -114,13 +114,24 @@ export function NotificationsPage() {
                     aria-hidden="true"
                     className={[
                       "mt-1.5 size-2 shrink-0 rounded-full",
-                      item.read_at ? "bg-transparent" : "bg-brand-600",
+                      item.read_at ? "bg-transparent" : "bg-accent",
                     ].join(" ")}
                   />
 
                   <span className="min-w-0">
-                    <span className="block leading-snug text-stone-800">{item.message}</span>
-                    <span className="mt-1 block text-xs text-stone-500">
+                    {/* A read notification recedes to muted. Unread is then carried by
+                        two signals at once — the dot and the brightness — which is what
+                        makes the state readable from across the page rather than only
+                        on inspection. */}
+                    <span
+                      className={[
+                        "block leading-snug",
+                        item.read_at ? "text-muted" : "text-ink",
+                      ].join(" ")}
+                    >
+                      {item.message}
+                    </span>
+                    <span className="mt-1 block text-xs text-faint">
                       {formatWhen(item.created_at)}
                       {!item.read_at && <span className="sr-only"> — unread</span>}
                     </span>
@@ -128,8 +139,7 @@ export function NotificationsPage() {
                 </Link>
               </li>
             ))}
-          </ul>
-        </Card>
+        </ul>
       )}
 
       {state.total > PAGE_SIZE && (
@@ -142,7 +152,7 @@ export function NotificationsPage() {
             Newer
           </Button>
 
-          <p className="text-sm text-stone-500">
+          <p className="text-sm text-muted">
             {offset + 1}–{Math.min(offset + PAGE_SIZE, state.total)} of {state.total}
           </p>
 

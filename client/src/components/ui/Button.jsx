@@ -6,37 +6,45 @@
  */
 
 /**
- * A BUTTON THAT ONLY CHANGES COLOUR ON HOVER READS AS A 2012 BUTTON, and that was the
- * substance of "it looks dull". The fix is not more colour — it is depth and motion:
- * a real shadow that grows, and a pixel of lift, so the control behaves like an
- * object rather than a rectangle that repaints.
+ * A BUTTON THAT ONLY CHANGES COLOUR ON HOVER READS AS A 2012 BUTTON. The fix is not
+ * more colour — it is depth and motion: a shadow that grows, and a pixel of lift, so
+ * the control behaves like an object rather than a rectangle that repaints.
  *
- * `shadow-brand-600/20` rather than a black shadow: a coloured shadow under a
- * coloured button reads as light falling on it, while black under teal just looks
- * dirty. Every disabled state drops the shadow, or a dead button still looks raised.
+ * THE PRIMARY IS THE ONLY SATURATED FILL IN THE INTERFACE, and that is what makes it
+ * findable. On a near-black page one amber rectangle is unmissable from the corner of
+ * the eye; two would already be a choice to make. If a screen seems to need two
+ * primaries, one of them is a `secondary`.
+ *
+ * The glow under it (`shadow-accent/25`) rather than a black shadow: a coloured
+ * shadow under a coloured button reads as light falling off it, while black under
+ * amber just looks like soot. Every disabled state drops the shadow, or a dead button
+ * still looks raised.
  */
 const VARIANTS = {
   primary:
-    "bg-brand-600 text-white shadow-sm shadow-brand-600/20 " +
-    "hover:bg-brand-700 hover:shadow-md hover:shadow-brand-700/25 active:bg-brand-800 " +
-    "disabled:bg-brand-200 disabled:text-brand-700 disabled:shadow-none",
+    "bg-accent text-accent-ink shadow-sm shadow-accent/25 " +
+    "hover:bg-accent-hover hover:shadow-md hover:shadow-accent/35 active:bg-accent-press " +
+    "disabled:bg-accent/25 disabled:text-accent-ink/60 disabled:shadow-none",
+  // The quiet filled button: a step up from the surface it sits on rather than a
+  // second colour. Used where an action matters but is not THE action.
   secondary:
-    "bg-stone-900 text-white shadow-sm shadow-stone-900/20 " +
-    "hover:bg-stone-800 hover:shadow-md active:bg-stone-950 " +
-    "disabled:bg-stone-300 disabled:text-stone-500 disabled:shadow-none",
+    "bg-raised text-ink border border-line-strong " +
+    "hover:bg-sunken hover:border-faint active:bg-raised " +
+    "disabled:bg-raised disabled:text-faint disabled:border-line",
   outline:
-    "border border-stone-300 bg-white text-stone-800 shadow-sm " +
-    "hover:border-stone-400 hover:bg-stone-50 hover:shadow active:bg-stone-100 " +
-    "disabled:text-stone-400 disabled:shadow-none",
+    "border border-line-strong text-ink-soft " +
+    "hover:border-faint hover:bg-raised hover:text-ink active:bg-sunken " +
+    "disabled:text-faint disabled:border-line",
   // The only red in the interface, so red always means "cannot be undone".
   danger:
-    "bg-rose-600 text-white shadow-sm shadow-rose-600/20 " +
-    "hover:bg-rose-500 hover:shadow-md active:bg-rose-700 disabled:bg-rose-200 disabled:shadow-none",
-  ghost: "text-stone-700 hover:bg-stone-200/70 active:bg-stone-200 disabled:text-stone-400",
+    "bg-bad-soft text-bad border border-bad/40 " +
+    "hover:bg-bad hover:text-canvas hover:border-bad active:bg-bad/90 " +
+    "disabled:bg-bad-soft disabled:text-bad/40 disabled:border-line",
+  ghost: "text-muted hover:bg-raised hover:text-ink active:bg-sunken disabled:text-faint",
 };
 
 const SIZES = {
-  sm: "h-9 px-3 text-sm",
+  sm: "h-9 px-3.5 text-sm",
   // 48px, taller than an internal tool's control. This is a consumer product used
   // one-handed on a phone, and a comfortable target beats a compact one.
   md: "h-12 px-5 text-[15px]",
@@ -62,23 +70,27 @@ export function Button({
   children,
   ...rest
 }) {
-  // A navigation styled as a button must still BE a link. The tempting shortcut - a
-  // <Link> inside a <button> - is invalid HTML (interactive elements cannot nest) and
+  // A navigation styled as a button must still BE a link. The tempting shortcut — a
+  // <Link> inside a <button> — is invalid HTML (interactive elements cannot nest) and
   // breaks middle-click, ctrl+click and "copy link address".
   const isButton = Component === "button";
 
   return (
     <Component
-      // `loading` implies disabled. Separating them is how a form gets submitted twice:
-      // the spinner spins while the button still accepts clicks.
+      // `loading` implies disabled. Separating them is how a form gets submitted
+      // twice: the spinner spins while the button still accepts clicks.
       disabled={isButton ? loading || rest.disabled : undefined}
       aria-disabled={!isButton && (loading || rest.disabled) ? true : undefined}
-      // The spinner is visual only; this is what tells assistive tech the control is busy.
+      // The spinner is visual only; this is what tells assistive tech it is busy.
       aria-busy={loading || undefined}
       className={[
-        "inline-flex items-center justify-center gap-2 rounded-xl font-medium",
+        "inline-flex items-center justify-center gap-2 rounded-xl font-semibold",
         // `transition-all`, not `transition-colors` — the shadow and the lift are half
         // the effect and `transition-colors` would snap both.
+        //
+        // 150ms. Fast enough that the control feels connected to the pointer rather
+        // than animated at it; the brief's "subtle and fast" is a duration, and this
+        // is it.
         "transition-all duration-150",
         // The lift, and its removal when the control cannot be pressed. `active:`
         // puts it back down, which is what makes a click feel like a press.

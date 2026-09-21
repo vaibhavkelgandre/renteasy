@@ -311,7 +311,7 @@ describe("the verification gate", () => {
     expect(await screen.findByText(/confirm your email/i)).toBeInTheDocument();
     // A banner, not a wall. Blocking an unverified user from browsing would hide the
     // very thing that makes confirming worth doing.
-    expect(screen.getByRole("heading", { name: /rent almost anything/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /available near you/i })).toBeInTheDocument();
   });
 
   it("shows no banner once confirmed", async () => {
@@ -325,7 +325,7 @@ describe("the verification gate", () => {
       },
     });
 
-    await screen.findByRole("heading", { name: /rent almost anything/i });
+    await screen.findByRole("heading", { name: /available near you/i });
     expect(screen.queryByText(/confirm your email/i)).not.toBeInTheDocument();
   });
 

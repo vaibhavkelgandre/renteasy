@@ -78,14 +78,14 @@ function NoticePeriod({ listingId, value, onSaved }) {
   // of "when can this be booked", and as a separate panel it added its own heading,
   // padding and border to say one sentence.
   return (
-    <div className="mt-4 border-t border-stone-200 pt-4">
+    <div className="mt-4 border-t border-line pt-4">
       <label
         htmlFor="notice-period"
-        className="text-sm font-medium text-stone-900"
+        className="text-sm font-medium text-ink"
       >
         Notice you need
       </label>
-      <p className="mt-0.5 text-sm leading-snug text-stone-600">
+      <p className="mt-0.5 text-sm leading-snug text-muted">
         Nobody can book a start sooner than this.
       </p>
 
@@ -94,7 +94,7 @@ function NoticePeriod({ listingId, value, onSaved }) {
         value={value == null ? "" : String(value)}
         onChange={(event) => save(event.target.value)}
         disabled={saving}
-        className="mt-2 h-10 w-full rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-900 disabled:opacity-60"
+        className="mt-2 h-10 w-full rounded-lg border border-line-strong bg-surface px-3 text-sm text-ink disabled:opacity-60"
       >
         {NOTICE_CHOICES.map((choice) => (
           <option key={choice.value} value={choice.value}>
@@ -145,8 +145,8 @@ function BlackoutForm({ listingId, onAdded }) {
 
   return (
     <Card className="p-5">
-      <h2 className="font-semibold text-stone-900">Block out dates</h2>
-      <p className="mt-0.5 text-sm leading-snug text-stone-600">
+      <h2 className="font-semibold text-ink">Block out dates</h2>
+      <p className="mt-0.5 text-sm leading-snug text-muted">
         Times you need it yourself. Nobody can request these.
       </p>
 
@@ -222,13 +222,13 @@ function BlackoutRow({ listingId, blackout, onRemoved }) {
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 py-3">
       <div className="min-w-0">
-        <p className="font-medium text-stone-900">
+        <p className="font-medium text-ink">
           {formatRange(blackout.starts_at, blackout.ends_at)}
         </p>
-        <p className="mt-0.5 truncate text-sm text-stone-500">
+        <p className="mt-0.5 truncate text-sm text-muted">
           {blackout.reason || "No reason given"}
         </p>
-        {error && <p className="mt-1 text-sm text-rose-700">{error}</p>}
+        {error && <p className="mt-1 text-sm text-bad">{error}</p>}
       </div>
 
       <Button variant="ghost" size="sm" onClick={remove} loading={busy}>
@@ -277,7 +277,7 @@ export function ListingAvailabilityPage() {
 
   if (data.id !== id) {
     return (
-      <p className="text-stone-500" role="status">
+      <p className="text-muted" role="status">
         Loading…
       </p>
     );
@@ -303,7 +303,7 @@ export function ListingAvailabilityPage() {
       back={
         <Link
           to={`/listings/${id}/edit`}
-          className="text-sm font-medium text-brand-700 underline underline-offset-2"
+          className="text-sm font-medium text-accent underline underline-offset-2"
         >
           ← Back to the listing
         </Link>
@@ -330,9 +330,9 @@ export function ListingAvailabilityPage() {
           />
 
           {availability.noticePeriodHours != null && (
-            <p className="mt-2 text-xs leading-snug text-stone-500">
+            <p className="mt-2 text-xs leading-snug text-muted">
               Earliest start right now:{" "}
-              <span className="font-medium text-stone-700">
+              <span className="font-medium text-ink-soft">
                 {formatWhen(availability.bookableFrom)}
               </span>
               .
@@ -344,14 +344,14 @@ export function ListingAvailabilityPage() {
           <BlackoutForm listingId={id} onAdded={load} />
 
           <Card className="p-5">
-            <h2 className="font-semibold text-stone-900">Dates you have blocked</h2>
+            <h2 className="font-semibold text-ink">Dates you have blocked</h2>
 
             {blackouts.length === 0 ? (
-              <p className="mt-0.5 text-sm leading-snug text-stone-600">
+              <p className="mt-0.5 text-sm leading-snug text-muted">
                 None yet. Everything not already booked is available.
               </p>
             ) : (
-              <ul className="mt-1 divide-y divide-stone-200">
+              <ul className="mt-1 divide-y divide-line">
                 {blackouts.map((blackout) => (
                   <BlackoutRow
                     key={blackout.id}

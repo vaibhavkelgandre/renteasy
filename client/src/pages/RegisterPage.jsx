@@ -83,17 +83,17 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-md px-5 py-10 sm:py-16">
+    <div className="mx-auto my-8 w-full max-w-[26rem] rounded-2xl border border-line bg-surface p-6 sm:my-14 sm:p-8">
       <div className="mb-8 flex justify-center">
         <Link to="/" aria-label="RentEasy home">
           <Logo />
         </Link>
       </div>
 
-      <h1 className="text-center text-2xl font-semibold tracking-tight text-stone-900">
+      <h1 className="text-center text-[1.75rem] font-bold leading-tight tracking-tight text-ink">
         Create your account
       </h1>
-      <p className="mt-2 text-center text-stone-500">
+      <p className="mt-2 text-center text-muted">
         Rent what you need. Earn from what you already own.
       </p>
 
@@ -154,7 +154,7 @@ export function RegisterPage() {
                 href={terms?.url ?? "/terms"}
                 target="_blank"
                 rel="noreferrer"
-                className="font-medium text-brand-700 underline underline-offset-2"
+                className="font-medium text-accent underline underline-offset-2"
               >
                 terms of service
               </a>{" "}
@@ -176,9 +176,9 @@ export function RegisterPage() {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-stone-500">
+      <p className="mt-6 text-center text-sm text-muted">
         Already have an account?{" "}
-        <Link to="/login" className="font-medium text-brand-700 underline underline-offset-2">
+        <Link to="/login" className="font-medium text-accent underline underline-offset-2">
           Sign in
         </Link>
       </p>

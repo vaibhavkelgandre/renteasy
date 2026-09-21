@@ -119,14 +119,14 @@ export function App() {
 /** 404. Standalone, so it works with or without a session. */
 function NotFoundPage() {
   return (
-    <div className="grid min-h-full place-items-center bg-stone-50 px-5">
+    <div className="grid min-h-full place-items-center bg-raised px-5">
       <div className="text-center">
         <div className="mb-8 flex justify-center">
           <Logo />
         </div>
-        <p className="font-mono text-sm tabular text-stone-400">404</p>
-        <h1 className="mt-2 text-xl font-semibold text-stone-900">Page not found</h1>
-        <p className="mx-auto mt-2 max-w-sm leading-relaxed text-stone-500">
+        <p className="font-mono text-sm tabular text-faint">404</p>
+        <h1 className="mt-2 text-xl font-semibold text-ink">Page not found</h1>
+        <p className="mx-auto mt-2 max-w-sm leading-relaxed text-muted">
           That address does not exist. If you followed a confirmation link from an
           email, check it was copied in full.
         </p>

@@ -16,7 +16,6 @@
 
 import { useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Field } from "../components/ui/Field.jsx";
 import { Alert } from "../components/ui/Alert.jsx";
@@ -77,15 +76,15 @@ export function ResetPasswordPage() {
 
   if (dead) {
     return (
-      <div className="mx-auto w-full max-w-md px-5 py-10 sm:py-16">
+      <div className="mx-auto my-8 w-full max-w-[26rem] rounded-2xl border border-line bg-surface p-6 sm:my-14 sm:p-8">
         <div className="mb-8 flex justify-center">
           <Logo />
         </div>
 
-        <Card className="p-8 text-center">
-          <div className="mx-auto grid size-14 place-items-center rounded-full bg-amber-50">
+        <div className="text-center">
+          <div className="mx-auto grid size-14 place-items-center rounded-full bg-accent-soft">
             <svg
-              className="size-7 text-amber-600"
+              className="size-7 text-accent"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -98,7 +97,7 @@ export function ResetPasswordPage() {
             </svg>
           </div>
 
-          <h1 className="mt-5 text-xl font-semibold tracking-tight text-stone-900">
+          <h1 className="mt-5 text-xl font-semibold tracking-tight text-ink">
             This link no longer works
           </h1>
 
@@ -109,25 +108,25 @@ export function ResetPasswordPage() {
 
               So the copy explains what to DO rather than what went wrong, which is the
               only useful thing to say when we genuinely will not distinguish. */}
-          <p className="mt-3 leading-relaxed text-stone-600">
+          <p className="mt-3 leading-relaxed text-muted">
             Reset links expire after an hour and can only be used once.
           </p>
 
           <Button as={Link} to="/forgot-password" size="lg" fullWidth className="mt-7">
             Request a new link
           </Button>
-        </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-md px-5 py-10 sm:py-16">
+    <div className="mx-auto my-8 w-full max-w-[26rem] rounded-2xl border border-line bg-surface p-6 sm:my-14 sm:p-8">
       <div className="mb-8 flex justify-center">
         <Logo />
       </div>
 
-      <h1 className="text-center text-2xl font-semibold tracking-tight text-stone-900">
+      <h1 className="text-center text-[1.75rem] font-bold leading-tight tracking-tight text-ink">
         Set a new password
       </h1>
 
@@ -164,7 +163,7 @@ export function ResetPasswordPage() {
 
       {/* Said out loud because the alternative reads as a bug. Every other credential
           flow people meet signs them in on success. */}
-      <p className="mt-6 text-center text-sm leading-relaxed text-stone-500">
+      <p className="mt-6 text-center text-sm leading-relaxed text-muted">
         You&rsquo;ll sign in with your new password afterwards — this link sets a
         password, it doesn&rsquo;t sign you in.
       </p>

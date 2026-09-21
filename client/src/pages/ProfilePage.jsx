@@ -55,7 +55,7 @@ function Section({ title, description, danger = false, children }) {
   const panelId = useId();
 
   return (
-    <Card className={danger ? "border-rose-200 bg-rose-50/40" : ""}>
+    <Card className={danger ? "border-bad/30 bg-bad-soft/40" : ""}>
       <h2>
         <button
           type="button"
@@ -64,15 +64,15 @@ function Section({ title, description, danger = false, children }) {
           aria-controls={panelId}
           className={[
             "flex w-full items-center justify-between gap-4 rounded-2xl p-6 text-left sm:p-7",
-            "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600",
-            danger ? "hover:bg-rose-50/60" : "hover:bg-stone-50",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+            danger ? "hover:bg-bad-soft/60" : "hover:bg-raised",
           ].join(" ")}
         >
           <span className="min-w-0">
             <span
               className={[
                 "block text-base font-semibold",
-                danger ? "text-rose-900" : "text-stone-900",
+                danger ? "text-bad" : "text-ink",
               ].join(" ")}
             >
               {title}
@@ -81,7 +81,7 @@ function Section({ title, description, danger = false, children }) {
               <span
                 className={[
                   "mt-1 block text-sm leading-relaxed",
-                  danger ? "text-rose-800" : "text-stone-500",
+                  danger ? "text-bad" : "text-muted",
                 ].join(" ")}
               >
                 {description}
@@ -95,7 +95,7 @@ function Section({ title, description, danger = false, children }) {
           <svg
             className={[
               "size-5 shrink-0 transition-transform",
-              danger ? "text-rose-400" : "text-stone-400",
+              danger ? "text-bad" : "text-faint",
               open ? "rotate-180" : "",
             ].join(" ")}
             viewBox="0 0 20 20"
@@ -112,7 +112,7 @@ function Section({ title, description, danger = false, children }) {
       </h2>
 
       {open && (
-        <div id={panelId} className="border-t border-stone-200/70 p-6 pt-5 sm:p-7 sm:pt-5">
+        <div id={panelId} className="border-t border-line p-6 pt-5 sm:p-7 sm:pt-5">
           {children}
         </div>
       )}
@@ -125,12 +125,12 @@ export function ProfilePage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <h1 className="text-2xl font-semibold tracking-tight text-stone-900">Your account</h1>
-      <p className="mt-2 leading-relaxed text-stone-600">
+      <h1 className="text-2xl font-semibold tracking-tight text-ink">Your account</h1>
+      <p className="mt-2 leading-relaxed text-muted">
         Member since {memberSince(user.created_at)}.{" "}
         <Link
           to={`/u/${user.id}`}
-          className="font-medium text-brand-700 underline underline-offset-2"
+          className="font-medium text-accent underline underline-offset-2"
         >
           See your public profile
         </Link>
@@ -271,11 +271,11 @@ function EmailSection({ user, onChanged }) {
           : user.email
       }
     >
-      <div className="mb-5 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
-        <p className="text-sm text-stone-500">Current</p>
-        <p className="mt-0.5 font-medium text-stone-900">{user.email}</p>
+      <div className="mb-5 rounded-xl border border-line bg-raised px-4 py-3">
+        <p className="text-sm text-muted">Current</p>
+        <p className="mt-0.5 font-medium text-ink">{user.email}</p>
         {!user.email_verified_at && (
-          <p className="mt-1 text-sm text-amber-700">Not confirmed yet.</p>
+          <p className="mt-1 text-sm text-accent">Not confirmed yet.</p>
         )}
       </div>
 
@@ -451,7 +451,7 @@ function DangerSection({ onDeleted }) {
           section replaced it: opening a section marked "Delete your account" is already
           the deliberate act, and a third click before anything happens is friction that
           teaches people to click through warnings. The password is the real guard. */}
-      <p className="text-sm leading-relaxed text-rose-800">
+      <p className="text-sm leading-relaxed text-bad">
         This cannot be undone, and there is no way to restore it yourself. Your email
         address stays claimed by the deleted account, so you will not be able to sign up
         again with it.

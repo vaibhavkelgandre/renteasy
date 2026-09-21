@@ -4,6 +4,11 @@
  * A pair of arrows in a loop — a thing goes out and comes back, which is what a rental
  * is. Inline SVG rather than a file: a handful of paths, so an <img> would cost a
  * request and a flash of nothing on first paint.
+ *
+ * ON THE DARK PALETTE THE MARK IS THE ACCENT ON A DARK TILE, not white on a filled
+ * amber square. A saturated amber block in the top-left corner competes with the one
+ * button on the page that is supposed to be the only saturated amber thing — and the
+ * logo is not an action.
  */
 
 /**
@@ -21,12 +26,12 @@ export function Logo({ size = "md", showWordmark = true, wordmarkClassName = "" 
   const glyph = size === "sm" ? "size-4" : "size-5";
 
   return (
-    <span className="inline-flex items-center gap-2.5">
-      <span className={`grid place-items-center bg-brand-600 ${box}`}>
-        {/* White on brand-600 passes contrast comfortably. The equivalent mark on a
-            light accent would need dark text instead. */}
+    <span className="group/logo inline-flex items-center gap-2.5">
+      <span
+        className={`grid place-items-center border border-accent-line bg-accent-soft text-accent transition-colors group-hover/logo:border-accent/60 ${box}`}
+      >
         <svg
-          className={`${glyph} text-white`}
+          className={glyph}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -44,9 +49,9 @@ export function Logo({ size = "md", showWordmark = true, wordmarkClassName = "" 
 
       {showWordmark && (
         <span
-          className={`font-semibold tracking-tight text-stone-900 ${size === "sm" ? "text-base" : "text-lg"} ${wordmarkClassName}`}
+          className={`font-extrabold tracking-tight text-ink ${size === "sm" ? "text-base" : "text-lg"} ${wordmarkClassName}`}
         >
-          Rent<span className="text-brand-600">Easy</span>
+          Rent<span className="text-accent">Easy</span>
         </span>
       )}
     </span>

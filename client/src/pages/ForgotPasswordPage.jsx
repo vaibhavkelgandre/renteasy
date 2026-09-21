@@ -20,7 +20,6 @@
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Field } from "../components/ui/Field.jsx";
 import { Alert } from "../components/ui/Alert.jsx";
@@ -55,15 +54,15 @@ export function ForgotPasswordPage() {
 
   if (sent) {
     return (
-      <div className="mx-auto w-full max-w-md px-5 py-10 sm:py-16">
+      <div className="mx-auto my-8 w-full max-w-[26rem] rounded-2xl border border-line bg-surface p-6 sm:my-14 sm:p-8">
         <div className="mb-8 flex justify-center">
           <Logo />
         </div>
 
-        <Card className="p-8 text-center">
-          <div className="mx-auto grid size-14 place-items-center rounded-full bg-brand-50">
+        <div className="text-center">
+          <div className="mx-auto grid size-14 place-items-center rounded-full bg-accent-soft">
             <svg
-              className="size-7 text-brand-600"
+              className="size-7 text-accent"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -77,19 +76,19 @@ export function ForgotPasswordPage() {
             </svg>
           </div>
 
-          <h1 className="mt-5 text-xl font-semibold tracking-tight text-stone-900">
+          <h1 className="mt-5 text-xl font-semibold tracking-tight text-ink">
             Check your inbox
           </h1>
 
           {/* The conditional is deliberate — see the file header. The address is echoed
               because a typo is the most common reason nothing arrives, and seeing it is
               what lets someone catch their own mistake. */}
-          <p className="mt-3 leading-relaxed text-stone-600">
-            If <span className="font-medium text-stone-900">{email}</span> has a RentEasy
+          <p className="mt-3 leading-relaxed text-muted">
+            If <span className="font-medium text-ink">{email}</span> has a RentEasy
             account, we&rsquo;ve emailed a link to reset its password.
           </p>
 
-          <p className="mt-4 text-sm leading-relaxed text-stone-500">
+          <p className="mt-4 text-sm leading-relaxed text-muted">
             The link works once and expires in an hour. If it doesn&rsquo;t arrive in a
             few minutes, check your spam folder.
           </p>
@@ -103,34 +102,34 @@ export function ForgotPasswordPage() {
                 account, so a second click would usually do nothing while appearing to
                 work — and saying why would confirm the address has an account. Editing
                 the address and submitting again is the honest affordance. */}
-            <p className="text-sm text-stone-500">
+            <p className="text-sm text-muted">
               Wrong address?{" "}
               <button
                 type="button"
                 onClick={() => setSent(false)}
-                className="font-medium text-brand-700 underline underline-offset-2"
+                className="font-medium text-accent underline underline-offset-2"
               >
                 Try another
               </button>
             </p>
           </div>
-        </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-md px-5 py-10 sm:py-16">
+    <div className="mx-auto my-8 w-full max-w-[26rem] rounded-2xl border border-line bg-surface p-6 sm:my-14 sm:p-8">
       <div className="mb-8 flex justify-center">
         <Link to="/" aria-label="RentEasy home">
           <Logo />
         </Link>
       </div>
 
-      <h1 className="text-center text-2xl font-semibold tracking-tight text-stone-900">
+      <h1 className="text-center text-[1.75rem] font-bold leading-tight tracking-tight text-ink">
         Reset your password
       </h1>
-      <p className="mt-3 text-center leading-relaxed text-stone-600">
+      <p className="mt-3 text-center leading-relaxed text-muted">
         Enter the email you signed up with and we&rsquo;ll send you a link to set a new
         password.
       </p>
@@ -153,9 +152,9 @@ export function ForgotPasswordPage() {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-stone-500">
+      <p className="mt-6 text-center text-sm text-muted">
         Remembered it?{" "}
-        <Link to="/login" className="font-medium text-brand-700 underline underline-offset-2">
+        <Link to="/login" className="font-medium text-accent underline underline-offset-2">
           Sign in
         </Link>
       </p>

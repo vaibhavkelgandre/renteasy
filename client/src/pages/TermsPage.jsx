@@ -27,8 +27,8 @@ import { api } from "../lib/api.js";
 function Clause({ heading, children }) {
   return (
     <section className="mt-7">
-      <h2 className="text-base font-semibold text-stone-900">{heading}</h2>
-      <p className="mt-2 leading-relaxed text-stone-600">{children}</p>
+      <h2 className="text-base font-semibold text-ink">{heading}</h2>
+      <p className="mt-2 leading-relaxed text-muted">{children}</p>
     </section>
   );
 }
@@ -58,8 +58,8 @@ export function TermsPage() {
       </div>
 
       <Card className="p-7 sm:p-9">
-        <h1 className="text-2xl font-semibold tracking-tight text-stone-900">Terms of use</h1>
-        <p className="mt-2 text-sm text-stone-500">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">Terms of use</h1>
+        <p className="mt-2 text-sm text-muted">
           {version ? `Version ${version}` : "Loading version…"}
         </p>
 
@@ -112,9 +112,9 @@ export function TermsPage() {
           applied to you silently.
         </Clause>
 
-        <p className="mt-9 border-t border-stone-200 pt-6 text-sm text-stone-500">
+        <p className="mt-9 border-t border-line pt-6 text-sm text-muted">
           Questions about any of this belong with a real lawyer, not this page.{" "}
-          <Link to="/register" className="font-medium text-brand-700 underline underline-offset-2">
+          <Link to="/register" className="font-medium text-accent underline underline-offset-2">
             Back to sign up
           </Link>
         </p>

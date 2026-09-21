@@ -13,9 +13,9 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { AvailabilityCalendar } from "../components/AvailabilityCalendar.jsx";
-import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
-import { Page } from "../components/ui/Page.jsx";
+import { Page, Section } from "../components/ui/Page.jsx";
+import { Rating } from "../components/ui/Rating.jsx";
 import { api } from "../lib/api.js";
 import { formatWhen } from "../lib/dates.js";
 import { formatPaise, RATE_UNITS } from "../lib/money.js";
@@ -34,6 +34,22 @@ const FULFILMENT_LABELS = {
 };
 
 /**
+ * A fact with a label above it.
+ *
+ * Used for the handover terms and the rental length. Replaces a `<dl>` of grey labels
+ * and black values with something that reads as a spec strip — the labels are small
+ * and quiet, the values are the size of body copy, and the eye lands on the answers.
+ */
+function Fact({ label, children }) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wider text-faint">{label}</dt>
+      <dd className="mt-1 font-medium text-ink">{children}</dd>
+    </div>
+  );
+}
+
+/**
  * The rate card. The whole reason someone is on this page.
  *
  * ONE PRICE IS THE HEADLINE, the rest are a list. The first version rendered every
@@ -41,29 +57,35 @@ const FULFILMENT_LABELS = {
  * the reader with three equal numbers and no answer to "what does this cost" — which
  * is the question they came with. The cheapest unit leads at full size; the others
  * sit under it as alternatives.
+ *
+ * THIS IS ONE OF THE THREE PLACES IN THE APP STILL ALLOWED TO BE A CARD. It has to
+ * stay legible while a long description scrolls past it, which is exactly the case the
+ * `Card` primitive's own doc reserves a border and a background for.
  */
 function RateCard({ listing }) {
   const rates = RATE_UNITS.filter((unit) => listing[unit.column] != null);
   const [headline, ...alternatives] = rates;
 
   return (
-    <Card className="overflow-hidden">
-      <div className="p-6">
+    <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+      <div className="p-5 sm:p-6">
         {headline && (
-          <p className="flex items-baseline gap-1.5">
-            <span className="tabular text-3xl font-semibold tracking-tight text-stone-900">
+          // 36px, weight 700, tight. The price is the single largest thing on the page
+          // after the photograph, because it is the thing being decided.
+          <p className="flex items-baseline gap-2">
+            <span className="tabular text-4xl font-bold leading-none tracking-tight text-ink">
               {formatPaise(listing[headline.column])}
             </span>
-            <span className="text-stone-500">/ {headline.short}</span>
+            <span className="text-sm text-muted">per {headline.short}</span>
           </p>
         )}
 
         {alternatives.length > 0 && (
-          <ul className="mt-4 space-y-2 border-t border-stone-200 pt-4">
+          <ul className="mt-5 space-y-2.5 border-t border-line pt-4">
             {alternatives.map((unit) => (
               <li key={unit.key} className="flex items-baseline justify-between gap-4 text-sm">
-                <span className="text-stone-600">{unit.label}</span>
-                <span className="tabular font-medium text-stone-900">
+                <span className="text-muted">{unit.label}</span>
+                <span className="tabular font-semibold text-ink-soft">
                   {formatPaise(listing[unit.column])}
                 </span>
               </li>
@@ -72,42 +94,52 @@ function RateCard({ listing }) {
         )}
 
         {listing.deposit_paise > 0 && (
-          <p className="mt-4 flex items-baseline justify-between gap-4 border-t border-stone-200 pt-4 text-sm">
-            <span className="text-stone-600">Refundable deposit</span>
-            <span className="tabular font-medium text-stone-900">
-              {formatPaise(listing.deposit_paise)}
-            </span>
-          </p>
+          // The deposit is set apart in its own well rather than as one more line in
+          // the rate list. It is not a rate — it is money that comes back — and a
+          // renter who reads it as a fourth price has been misled by the layout.
+          <div className="mt-4 rounded-xl bg-raised p-3">
+            <div className="flex items-baseline justify-between gap-4 text-sm">
+              <span className="font-medium text-ink-soft">Security deposit</span>
+              <span className="tabular font-semibold text-ink">
+                {formatPaise(listing.deposit_paise)}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-muted">Refundable when the item comes back.</p>
+          </div>
         )}
 
-        {/* Booking exists now. The placeholder that used to say it did not has gone,
-            rather than being left to contradict a working button. */}
         <Button as={Link} to={`/listings/${listing.id}/book`} size="lg" fullWidth className="mt-5">
-          Request to book
+          Reserve dates
         </Button>
 
-        <p className="mt-3 text-center text-sm text-stone-500">
+        <p className="mt-3 text-center text-sm text-muted">
           Nothing is charged. The owner has 48 hours to reply.
         </p>
       </div>
 
       {/* Still honest about what does not exist: negotiation is step 7. On its own
-          tinted foot rather than as a fourth rule inside the card — it is a note
-          about the product, not another line of the price. */}
-      <p className="border-t border-stone-200 bg-stone-50 px-6 py-3 text-sm leading-relaxed text-stone-500">
+          tinted foot rather than as a fourth rule inside the card — it is a note about
+          the product, not another line of the price. */}
+      <p className="border-t border-line bg-raised px-5 py-3 text-xs leading-relaxed text-muted sm:px-6">
         Price negotiation is not built yet — for now the rate card is the price.
       </p>
-    </Card>
+    </div>
   );
 }
 
-/** Photos: one large, the rest as a strip. */
+/**
+ * Photos: one large, the rest as a strip.
+ *
+ * NO FRAME AND NO PADDING. The photograph runs to its own rounded edge and sits
+ * directly on the page, which is the difference between a marketplace and a catalogue
+ * entry inside a form.
+ */
 function Gallery({ photos, title }) {
   const [active, setActive] = useState(0);
 
   if (photos.length === 0) {
     return (
-      <div className="grid aspect-[3/2] place-items-center rounded-2xl bg-stone-100 text-stone-400">
+      <div className="grid aspect-[3/2] place-items-center rounded-2xl border border-line bg-raised text-faint">
         No photos
       </div>
     );
@@ -117,30 +149,39 @@ function Gallery({ photos, title }) {
 
   return (
     <div>
-      <div className="overflow-hidden rounded-2xl bg-stone-100">
+      <div className="group relative overflow-hidden rounded-2xl border border-line bg-raised">
         <img
           src={current.url}
           // The listing title, because a photo of a camera on a page headed with that
           // camera's name adds nothing when read aloud — but an empty alt on the ONLY
           // image would leave a screen reader with nothing at all.
           alt={title}
-          // 3:2, not 4:3. This image is the tallest thing on the page and it sets
-          // where everything under it begins; a quarter less height brings the
-          // description and the handover details above the fold.
+          // 3:2, not 4:3. This image is the tallest thing on the page and it sets where
+          // everything under it begins; a quarter less height brings the description
+          // and the handover details above the fold.
           //
-          // `max-h` on top of the ratio, because a ratio alone means a wider page is
-          // a taller photograph — at 1440px this box would be 640px deep and undo
-          // exactly what the 3:2 was for. Beyond the cap it crops rather than grows.
-          className="aspect-[3/2] max-h-[460px] w-full object-cover"
+          // `max-h` on top of the ratio, because a ratio alone means a wider page is a
+          // taller photograph — at 1440px this box would be 640px deep and undo exactly
+          // what the 3:2 was for. Beyond the cap it crops rather than grows.
+          className="aspect-[3/2] max-h-[460px] w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
           // Reserving the real dimensions stops the page jumping as it loads, which is
           // why width and height are stored alongside the storage id.
           width={current.width}
           height={current.height}
         />
+
+        {photos.length > 1 && (
+          // A counter rather than arrows. The strip below is already the control, and
+          // arrows over the image would be a second one doing the same job — but
+          // without a count there is nothing telling you the strip is worth looking at.
+          <span className="pointer-events-none absolute bottom-3 right-3 rounded-full bg-canvas/80 px-2.5 py-1 text-xs font-semibold tabular text-ink backdrop-blur-sm">
+            {Math.min(active, photos.length - 1) + 1} / {photos.length}
+          </span>
+        )}
       </div>
 
       {photos.length > 1 && (
-        <ul className="mt-3 flex gap-2 overflow-x-auto">
+        <ul className="mt-3 flex gap-2 overflow-x-auto pb-1">
           {photos.map((photo, index) => (
             <li key={photo.id}>
               <button
@@ -149,8 +190,14 @@ function Gallery({ photos, title }) {
                 aria-label={`Photo ${index + 1} of ${photos.length}`}
                 aria-current={index === active}
                 className={[
-                  "size-20 shrink-0 overflow-hidden rounded-lg border-2 transition-colors",
-                  index === active ? "border-brand-600" : "border-transparent hover:border-stone-300",
+                  "size-20 shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-150",
+                  index === active
+                    ? "border-accent"
+                    : // Unselected thumbnails are dimmed rather than merely unbordered.
+                      // Against a dark page an un-highlighted thumbnail is already
+                      // quiet, so a border alone is too weak a signal for which one is
+                      // showing; brightness is the stronger one.
+                      "border-transparent opacity-55 hover:opacity-100",
                 ].join(" ")}
               >
                 <img src={photo.thumbUrl} alt="" className="size-full object-cover" loading="lazy" />
@@ -196,20 +243,20 @@ function Availability({ listingId }) {
   const { unavailable, noticePeriodHours, bookableFrom } = state.data;
 
   return (
-    <Card className="mt-4 p-5">
-      <h2 className="font-semibold text-stone-900">Availability</h2>
+    <div className="mt-4 rounded-2xl border border-line bg-surface p-5">
+      <h2 className="text-sm font-semibold uppercase tracking-[0.08em] text-muted">Availability</h2>
 
       {noticePeriodHours != null && (
-        <p className="mb-3 mt-1 text-sm leading-relaxed text-stone-600">
+        <p className="mt-2 text-sm leading-relaxed text-muted">
           The owner needs notice — the earliest you can start is{" "}
-          <span className="font-medium text-stone-900">{formatWhen(bookableFrom)}</span>.
+          <span className="font-semibold text-ink">{formatWhen(bookableFrom)}</span>.
         </p>
       )}
 
       <div className="mt-3">
         <AvailabilityCalendar unavailable={unavailable} bookableFrom={bookableFrom} />
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -235,7 +282,7 @@ export function ListingDetailPage() {
   // error both.
   if (result.id !== id) {
     return (
-      <p className="text-stone-500" role="status">
+      <p className="text-muted" role="status">
         Loading…
       </p>
     );
@@ -243,11 +290,11 @@ export function ListingDetailPage() {
 
   if (result.error) {
     return (
-      <Page width="reading" className="text-center">
-        <h1 className="text-xl font-semibold text-stone-900">Listing not found</h1>
+      <Page width="reading" className="py-12 text-center">
+        <h1 className="text-2xl font-bold text-ink">Listing not found</h1>
         {/* One message for every cause: an unknown id, a malformed one, a draft, and an
             unpublished listing all answer identically, so the copy must not guess. */}
-        <p className="mt-3 leading-relaxed text-stone-600">
+        <p className="mt-3 leading-relaxed text-muted">
           It may have been taken down, or the link may be wrong.
         </p>
         <Button as={Link} to="/" variant="outline" className="mt-7">
@@ -261,70 +308,95 @@ export function ListingDetailPage() {
 
   return (
     <Page>
-      {/* A FIXED sidebar, not a fraction of the page. At `1.4fr 1fr` the rate card
-          grew with the window and was 570px wide on a large monitor — a price, a
-          button and a calendar, none of which is better for being stretched. Pinning
-          it hands every extra pixel to the photograph and the description, which are
-          the things a wider screen actually helps. */}
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <div>
+      {/* A FIXED sidebar, not a fraction of the page. At `1.4fr 1fr` the rate card grew
+          with the window and was 570px wide on a large monitor — a price, a button and
+          a calendar, none of which is better for being stretched. Pinning it hands every
+          extra pixel to the photograph and the description, which are the things a wider
+          screen actually helps. */}
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-10">
+        <div className="min-w-0">
           <Gallery photos={listing.photos} title={listing.title} />
 
-          <h1 className="mt-6 text-3xl font-semibold tracking-tight text-stone-900">
+          {/* THE HEADER BLOCK: name, then the three things a renter checks before
+              reading anything — where it is, what state it is in, how it has been
+              rated. All on one line under the title rather than scattered down the
+              page, because these are what decide whether the description is worth
+              reading at all. */}
+          <h1 className="mt-7 text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
             {listing.title}
           </h1>
 
-          {/* CHIPS, not a dot-separated grey line. Three facts run together in one
-              muted sentence are read as one blur; the same three as separate objects
-              are scanned. They are also the only colour on an otherwise grey block
-              of text. */}
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-            <span className="rounded-full bg-brand-50 px-3 py-1 font-medium text-brand-800">
-              {listing.category_name}
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            {/* FR-806. Beside the title rather than down with the owner link: it is a
+                reason to keep reading, and nobody scrolls to find out whether a thing
+                is worth scrolling for. */}
+            <Rating rating={listing.rating} size="sm" empty="No reviews for this item yet" />
+
+            {listing.city && (
+              <>
+                <span className="text-line-strong" aria-hidden="true">
+                  •
+                </span>
+                {/* An area, never a street address — FR-113. */}
+                <span className="inline-flex items-center gap-1.5 text-muted">
+                  <svg
+                    className="size-4 shrink-0"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    aria-hidden="true"
+                  >
+                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
+                  {listing.locality}, {listing.city}
+                </span>
+              </>
+            )}
+
+            <span className="text-line-strong" aria-hidden="true">
+              •
             </span>
-            <span className="rounded-full bg-stone-100 px-3 py-1 text-stone-700">
+            <span className="text-muted">{listing.category_name}</span>
+
+            {/* CONDITION KEEPS ITS CHIP while the other two facts became plain text.
+                It is the one piece of metadata that varies in a way a renter cares
+                about — "Fair" and "Like new" are a real difference — so it earns the
+                only enclosure on the line. */}
+            <span className="rounded-full border border-line bg-raised px-2.5 py-1 text-xs font-semibold text-ink-soft">
               {CONDITION_LABELS[listing.condition]} condition
             </span>
-            {listing.city && (
-              // An area, never a street address — FR-113.
-              <span className="rounded-full bg-stone-100 px-3 py-1 text-stone-700">
-                {listing.locality}, {listing.city}
-              </span>
-            )}
           </div>
 
-          <p className="mt-6 whitespace-pre-line leading-relaxed text-stone-700">
-            {listing.description}
-          </p>
+          {/* COPY: "Everything you need to know", not "Description". The old heading
+              named the field in the database; this one says what the section is for. */}
+          <Section title="Everything you need to know" className="mt-9">
+            <p className="whitespace-pre-line leading-relaxed text-ink-soft">
+              {listing.description}
+            </p>
 
-          <dl className="mt-8 grid grid-cols-2 gap-4 border-t border-stone-200 pt-6 text-sm">
-            <div>
-              <dt className="text-stone-500">Handover</dt>
-              <dd className="mt-0.5 font-medium text-stone-900">
-                {FULFILMENT_LABELS[listing.fulfilment]}
-              </dd>
-            </div>
-            {(listing.min_duration_hours || listing.max_duration_hours) && (
-              <div>
-                <dt className="text-stone-500">Rental length</dt>
-                <dd className="mt-0.5 font-medium text-stone-900">
+            <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3">
+              <Fact label="Handover">{FULFILMENT_LABELS[listing.fulfilment]}</Fact>
+
+              {(listing.min_duration_hours || listing.max_duration_hours) && (
+                <Fact label="Rental length">
                   {listing.min_duration_hours ? `From ${listing.min_duration_hours}h` : ""}
                   {listing.min_duration_hours && listing.max_duration_hours ? " " : ""}
                   {listing.max_duration_hours ? `up to ${listing.max_duration_hours}h` : ""}
-                </dd>
-              </div>
-            )}
-          </dl>
+                </Fact>
+              )}
 
-          <p className="mt-6 text-sm text-stone-500">
-            Listed by{" "}
-            <Link
-              to={`/u/${listing.owner_id}`}
-              className="font-medium text-brand-700 underline underline-offset-2"
-            >
-              the owner
-            </Link>
-          </p>
+              <Fact label="Listed by">
+                <Link
+                  to={`/u/${listing.owner_id}`}
+                  className="text-accent underline underline-offset-2 transition-colors hover:text-accent-hover"
+                >
+                  the owner
+                </Link>
+              </Fact>
+            </dl>
+          </Section>
         </div>
 
         {/* Sticky on a wide screen: the price is what a reader keeps referring back to

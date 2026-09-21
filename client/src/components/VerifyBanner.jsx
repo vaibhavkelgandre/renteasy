@@ -35,24 +35,44 @@ export function VerifyBanner() {
   }
 
   return (
-    <div className="border-b border-amber-200 bg-amber-50">
-      <div className="mx-auto flex max-w-content flex-col gap-3 px-5 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-8">
-        <p className="text-sm leading-relaxed text-amber-900">
-          {state === "sent" ? (
-            <>
-              {/* The SAME message regardless of what actually happened server-side —
-                  sent, too soon, already verified. It mirrors the API's own single
-                  answer, and it is honest: in every case the next step really is
-                  "check your inbox". */}
-              <span className="font-medium">Check your inbox.</span> We&rsquo;ve sent a
-              confirmation link to {user.email}.
-            </>
-          ) : (
-            <>
-              <span className="font-medium">Confirm your email</span> to start listing
-              your things or booking from others.
-            </>
-          )}
+    // A TINTED STRIP, NOT A FILLED BAND. On the light build this was a solid amber bar;
+    // on near-black the same treatment is the brightest thing on any page, permanently,
+    // for a message that is a nudge rather than an error. The dark wash plus an amber
+    // rule at the top carries it without shouting.
+    <div className="border-b border-accent-line bg-accent-soft">
+      <div className="mx-auto flex max-w-content flex-col gap-3 px-5 py-2.5 sm:flex-row sm:items-center sm:justify-between lg:px-8">
+        <p className="flex items-start gap-2.5 text-sm leading-relaxed text-ink-soft">
+          <svg
+            className="mt-0.5 size-4 shrink-0 text-accent"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="2" y="4" width="20" height="16" rx="2" />
+            <path d="m22 7-10 6L2 7" />
+          </svg>
+
+          <span>
+            {state === "sent" ? (
+              <>
+                {/* The SAME message regardless of what actually happened server-side —
+                    sent, too soon, already verified. It mirrors the API's own single
+                    answer, and it is honest: in every case the next step really is
+                    "check your inbox". */}
+                <span className="font-semibold text-ink">Check your inbox.</span> We&rsquo;ve
+                sent a confirmation link to {user.email}.
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-ink">Confirm your email</span> to start
+                listing your things or booking from others.
+              </>
+            )}
+          </span>
         </p>
 
         {state !== "sent" && (
@@ -61,7 +81,7 @@ export function VerifyBanner() {
             variant="outline"
             loading={state === "sending"}
             onClick={resend}
-            className="shrink-0 self-start border-amber-300 bg-white/60 hover:bg-white sm:self-auto"
+            className="shrink-0 self-start border-accent-line text-accent hover:border-accent hover:bg-accent/10 hover:text-accent sm:self-auto"
           >
             Resend link
           </Button>

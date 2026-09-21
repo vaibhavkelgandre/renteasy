@@ -355,7 +355,7 @@ describe("ListingDetailPage", () => {
     // assertion kept passing only because the replacement copy happens to mention that
     // NEGOTIATION is unbuilt — a test passing for the wrong reason, which is worse than
     // one failing.
-    const book = await screen.findByRole("link", { name: /request to book/i });
+    const book = await screen.findByRole("link", { name: /reserve dates/i });
     expect(book).toHaveAttribute("href", `/listings/${LISTING_ID}/book`);
 
     // Still honest about what genuinely does not exist: negotiation is step 7.

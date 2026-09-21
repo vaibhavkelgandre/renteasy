@@ -9,14 +9,14 @@
  * The initials are the trigger rather than the word "Account" because they answer a
  * question the label cannot: WHICH account you are in, which matters on a shared
  * device. The full email is deliberately inside the open menu rather than in the bar —
- * it should not be sitting on screen on every page for anyone nearby to read.
+ * it should not sit on screen on every page for anyone nearby to read.
  */
 
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 
-/** First letters of the first two words, e.g. "Asha Patil" → "AP". */
+/** First letters of the first two words, e.g. "Asha Patil" -> "AP". */
 function initialsOf(name) {
   return name
     .split(/\s+/)
@@ -25,6 +25,10 @@ function initialsOf(name) {
     .map((part) => part[0].toUpperCase())
     .join("");
 }
+
+/** One row in the menu. Extracted so four links cannot drift into four paddings. */
+const ITEM_CLASSES =
+  "flex items-center gap-2.5 px-3 py-2.5 text-sm text-ink-soft transition-colors hover:bg-raised hover:text-ink";
 
 export function AccountMenu() {
   const { user, logout } = useAuth();
@@ -70,10 +74,13 @@ export function AccountMenu() {
         // nothing read aloud. Screen reader users get the name; the screen stays clean.
         aria-label={`Account menu for ${user.name}`}
         className={[
-          "grid size-9 place-items-center rounded-full text-sm font-semibold transition-colors",
-          "bg-brand-100 text-brand-800 hover:bg-brand-200",
-          "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2",
-          open ? "ring-2 ring-brand-600 ring-offset-2" : "",
+          "grid size-9 place-items-center rounded-full border text-sm font-bold transition-colors",
+          // A RING OF ACCENT, NOT A DISC OF IT. A filled amber circle in the corner
+          // competes with the one filled amber button beside it, and an avatar is not
+          // an action.
+          open
+            ? "border-accent bg-accent-soft text-accent"
+            : "border-line-strong bg-raised text-ink-soft hover:border-accent/60 hover:text-accent",
         ].join(" ")}
       >
         <span aria-hidden="true">{initialsOf(user.name)}</span>
@@ -83,41 +90,37 @@ export function AccountMenu() {
         <div
           role="menu"
           aria-label="Account"
-          className="absolute right-0 z-50 mt-2 w-60 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg"
+          // `shadow-2xl shadow-black/60` — on a dark palette a dropdown cannot be
+          // separated from the page by being brighter (it would glare), so the
+          // separation is a deep shadow plus one step of surface. Without the shadow a
+          // menu over a card is indistinguishable from part of it.
+          className="absolute right-0 z-50 mt-2 w-60 overflow-hidden rounded-xl border border-line-strong bg-surface p-1 shadow-2xl shadow-black/60"
         >
           {/* Identity first, and the email is here rather than in the bar: this is the
               one place someone deliberately looks to check which account they are in. */}
-          <div className="border-b border-stone-100 px-4 py-3">
-            <p className="truncate text-sm font-medium text-stone-900">{user.name}</p>
-            <p className="truncate text-sm text-stone-500">{user.email}</p>
+          <div className="border-b border-line px-3 py-2.5">
+            <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
+            <p className="truncate text-sm text-muted">{user.email}</p>
           </div>
 
-          <Link
-            to="/bookings"
-            role="menuitem"
-            onClick={() => setOpen(false)}
-            className="block px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50"
-          >
-            Your bookings
-          </Link>
+          <div className="py-1">
+            <Link to="/bookings" role="menuitem" onClick={() => setOpen(false)} className={ITEM_CLASSES}>
+              Your bookings
+            </Link>
 
-          <Link
-            to="/listings/mine"
-            role="menuitem"
-            onClick={() => setOpen(false)}
-            className="block px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50"
-          >
-            Your listings
-          </Link>
+            <Link
+              to="/listings/mine"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className={ITEM_CLASSES}
+            >
+              Your listings
+            </Link>
 
-          <Link
-            to="/profile"
-            role="menuitem"
-            onClick={() => setOpen(false)}
-            className="block px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50"
-          >
-            Your account
-          </Link>
+            <Link to="/profile" role="menuitem" onClick={() => setOpen(false)} className={ITEM_CLASSES}>
+              Your account
+            </Link>
+          </div>
 
           {/* Ruled off and tinted as the one destructive item, so it cannot be mistaken
               for the navigation above it at a glance. */}
@@ -128,7 +131,7 @@ export function AccountMenu() {
               setOpen(false);
               logout();
             }}
-            className="block w-full border-t border-stone-100 px-4 py-2.5 text-left text-sm text-rose-700 hover:bg-rose-50"
+            className="flex w-full border-t border-line px-3 py-2.5 text-left text-sm font-medium text-bad transition-colors hover:bg-bad-soft"
           >
             Sign out
           </button>

@@ -4,13 +4,21 @@
  * Never a toast. A toast disappears on a timer, which is exactly wrong for "we've
  * emailed you, go and check" or "that link has expired" — the reader looks away, looks
  * back, and the only instruction on the page is gone.
+ *
+ * ON A DARK GROUND THESE ARE TINTS, NOT FILLS. A saturated red panel on near-black
+ * glares and drags the eye off whatever the reader was doing; a dark red wash with a
+ * bright foreground carries the same meaning and stays part of the page. The `-soft`
+ * tokens exist for exactly this.
  */
 
 const TONES = {
-  error: { box: "border-rose-200 bg-rose-50 text-rose-900", icon: "text-rose-500", live: "assertive" },
-  warning: { box: "border-amber-200 bg-amber-50 text-amber-900", icon: "text-amber-600", live: "polite" },
-  info: { box: "border-brand-200 bg-brand-50 text-brand-800", icon: "text-brand-600", live: "polite" },
-  success: { box: "border-emerald-200 bg-emerald-50 text-emerald-800", icon: "text-emerald-600", live: "polite" },
+  error: { box: "border-bad/30 bg-bad-soft text-bad", icon: "text-bad", live: "assertive" },
+  // "Warning" and "info" share the accent, because on this palette they are the same
+  // message: something here wants your attention. Inventing a fifth hue to separate
+  // "be careful" from "did you know" is how a palette becomes six colours.
+  warning: { box: "border-accent-line bg-accent-soft text-accent", icon: "text-accent", live: "polite" },
+  info: { box: "border-line-strong bg-raised text-ink-soft", icon: "text-muted", live: "polite" },
+  success: { box: "border-good/25 bg-good-soft text-good", icon: "text-good", live: "polite" },
 };
 
 /**

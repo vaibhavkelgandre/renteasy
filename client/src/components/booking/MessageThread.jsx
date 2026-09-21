@@ -31,7 +31,7 @@ function MessageBubble({ message, bookingId, mine }) {
   if (message.kind === "SYSTEM") {
     return (
       <li className="my-1 text-center">
-        <span className="rounded-full bg-stone-100 px-3 py-1 text-xs text-stone-500">
+        <span className="rounded-full bg-raised px-3 py-1 text-xs text-muted">
           {message.body}
         </span>
       </li>
@@ -45,7 +45,7 @@ function MessageBubble({ message, bookingId, mine }) {
       <div
         className={[
           "max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-snug",
-          mine ? "bg-brand-600 text-white" : "bg-stone-100 text-stone-900",
+          mine ? "bg-accent text-accent-ink" : "bg-raised text-ink",
         ].join(" ")}
       >
         {message.hasAttachment && (
@@ -61,7 +61,10 @@ function MessageBubble({ message, bookingId, mine }) {
         )}
 
         {shared && (
-          <p className={`text-xs ${mine ? "text-brand-100" : "text-stone-500"}`}>
+          // `accent-ink/70` inside your own bubble, never `accent`: that bubble IS the
+          // accent, so secondary text on it has to be a dimmed version of the
+          // foreground rather than a second use of the fill colour.
+          <p className={`text-xs ${mine ? "text-accent-ink/70" : "text-muted"}`}>
             Shared a phone number
           </p>
         )}
@@ -72,7 +75,7 @@ function MessageBubble({ message, bookingId, mine }) {
           </p>
         )}
 
-        <p className={`mt-1 text-[11px] ${mine ? "text-brand-100" : "text-stone-500"}`}>
+        <p className={`mt-1 text-[11px] ${mine ? "text-accent-ink/60" : "text-faint"}`}>
           {formatWhen(message.created_at)}
         </p>
       </div>
@@ -160,12 +163,12 @@ export function MessageThread({ bookingId, currentUserId }) {
   return (
     <Card className="flex flex-col p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-semibold text-stone-900">Messages</h2>
+        <h2 className="font-semibold text-ink">Messages</h2>
         {canSend && (
           <button
             type="button"
             onClick={share}
-            className="text-sm font-medium text-brand-700 underline underline-offset-2"
+            className="text-sm font-medium text-accent underline underline-offset-2"
           >
             Share my phone number
           </button>
@@ -173,7 +176,7 @@ export function MessageThread({ bookingId, currentUserId }) {
       </div>
 
       {messages.length === 0 ? (
-        <p className="mt-3 text-sm leading-relaxed text-stone-600">
+        <p className="mt-3 text-sm leading-relaxed text-muted">
           No messages yet. Ask anything you need to know before you meet.
         </p>
       ) : (
@@ -216,7 +219,7 @@ export function MessageThread({ bookingId, currentUserId }) {
               maxLength={MAX_BODY}
               placeholder="Write a message…"
               aria-label="Write a message"
-              className="min-h-[2.75rem] w-full resize-y rounded-xl border border-stone-300 bg-white px-3 py-2 text-[15px] text-stone-900 placeholder:text-stone-400 focus:border-brand-600"
+              className="min-h-[2.75rem] w-full resize-y rounded-xl border border-line bg-raised px-3 py-2 text-[15px] text-ink transition-colors placeholder:text-faint focus:border-accent"
             />
 
             <Button type="submit" size="sm" loading={sending} className="shrink-0">
@@ -231,13 +234,13 @@ export function MessageThread({ bookingId, currentUserId }) {
               accept="image/jpeg,image/png,image/webp"
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
               aria-label="Attach a photo"
-              className="text-sm text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-stone-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-stone-700 hover:file:bg-stone-200"
+              className="text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-raised file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink-soft hover:file:bg-sunken"
             />
-            {file && <span className="text-sm text-stone-500">{file.name}</span>}
+            {file && <span className="text-sm text-muted">{file.name}</span>}
           </div>
         </form>
       ) : (
-        <p className="mt-4 rounded-xl bg-stone-50 px-3 py-2.5 text-sm leading-relaxed text-stone-600">
+        <p className="mt-4 rounded-xl bg-raised px-3 py-2.5 text-sm leading-relaxed text-muted">
           This booking is closed, so no new messages can be sent. The conversation
           stays here for both of you to read.
         </p>

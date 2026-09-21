@@ -9,7 +9,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Logo } from "../components/Logo.jsx";
 import { api } from "../lib/api.js";
@@ -74,21 +73,21 @@ export function VerifyPage() {
   }, [token]);
 
   return (
-    <div className="mx-auto w-full max-w-md px-5 py-10 sm:py-16">
+    <div className="mx-auto my-8 w-full max-w-[26rem] rounded-2xl border border-line bg-surface p-6 sm:my-14 sm:p-8">
       <div className="mb-8 flex justify-center">
         <Logo />
       </div>
 
-      <Card className="p-8 text-center">
+      <div className="text-center">
         {state.status === "working" && (
           <>
-            <div className="mx-auto grid size-14 place-items-center rounded-full bg-stone-100">
-              <svg className="size-6 animate-spin text-stone-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <div className="mx-auto grid size-14 place-items-center rounded-full bg-raised">
+              <svg className="size-6 animate-spin text-faint" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
                 <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
               </svg>
             </div>
-            <h1 className="mt-5 text-xl font-semibold text-stone-900">Confirming your email…</h1>
+            <h1 className="mt-5 text-xl font-semibold text-ink">Confirming your email…</h1>
             <p className="sr-only" role="status">
               Confirming your email address
             </p>
@@ -97,8 +96,8 @@ export function VerifyPage() {
 
         {state.status === "ok" && (
           <>
-            <div className="mx-auto grid size-14 place-items-center rounded-full bg-emerald-50">
-              <svg className="size-7 text-emerald-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <div className="mx-auto grid size-14 place-items-center rounded-full bg-good-soft">
+              <svg className="size-7 text-good" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path
                   fillRule="evenodd"
                   d="M16.7 5.3a1 1 0 010 1.4l-8 8a1 1 0 01-1.4 0l-4-4a1 1 0 011.4-1.4L8 12.6l7.3-7.3a1 1 0 011.4 0z"
@@ -107,7 +106,7 @@ export function VerifyPage() {
               </svg>
             </div>
 
-            <h1 className="mt-5 text-xl font-semibold tracking-tight text-stone-900">
+            <h1 className="mt-5 text-xl font-semibold tracking-tight text-ink">
               {/* Three outcomes, not two. A second click is a success, not an error —
                   mail clients prefetch links, so that path is common rather than
                   exotic. And a link that completed an EMAIL CHANGE needs its own
@@ -120,7 +119,7 @@ export function VerifyPage() {
                   : "Email confirmed"}
             </h1>
 
-            <p className="mt-3 leading-relaxed text-stone-600">
+            <p className="mt-3 leading-relaxed text-muted">
               {state.alreadyVerified
                 ? "This address was already confirmed. You're all set."
                 : state.emailChanged
@@ -136,9 +135,9 @@ export function VerifyPage() {
 
         {state.status === "failed" && (
           <>
-            <div className="mx-auto grid size-14 place-items-center rounded-full bg-amber-50">
+            <div className="mx-auto grid size-14 place-items-center rounded-full bg-accent-soft">
               <svg
-                className="size-7 text-amber-600"
+                className="size-7 text-accent"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -151,7 +150,7 @@ export function VerifyPage() {
               </svg>
             </div>
 
-            <h1 className="mt-5 text-xl font-semibold tracking-tight text-stone-900">
+            <h1 className="mt-5 text-xl font-semibold tracking-tight text-ink">
               This link no longer works
             </h1>
 
@@ -162,11 +161,11 @@ export function VerifyPage() {
 
                 So the copy explains what to DO rather than what went wrong, which is
                 the only useful thing to say when we genuinely will not distinguish. */}
-            <p className="mt-3 leading-relaxed text-stone-600">
+            <p className="mt-3 leading-relaxed text-muted">
               Links expire after 24 hours and can only be used once.
             </p>
 
-            <p className="mt-4 text-sm leading-relaxed text-stone-500">
+            <p className="mt-4 text-sm leading-relaxed text-muted">
               Sign in and we&rsquo;ll send you a new one — you can sign in even before
               your email is confirmed.
             </p>
@@ -176,7 +175,7 @@ export function VerifyPage() {
             </Button>
           </>
         )}
-      </Card>
+      </div>
     </div>
   );
 }

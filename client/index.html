@@ -5,13 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RentEasy — rent almost anything, by the hour, day or month</title>
 
-    <!-- Matches the header, so the mobile status bar does not sit as a pale strip
-         above a coloured one. Light here, unlike an internal tool: this is a public
-         marketplace and most visitors arrive without an account. -->
-    <meta name="theme-color" content="#fafaf9" />
+    <!-- Matches --color-canvas, so the mobile browser chrome and the page are one
+         surface. A pale strip above a near-black page is the most visible way a dark
+         site gives itself away as a retrofit. -->
+    <meta name="theme-color" content="#0A0B0D" />
+    <!-- Tells the browser to draw its own widgets (scrollbars, form controls, the
+         PDF viewer) dark. Without it Chrome renders a bright scrollbar down the side
+         of a dark page. -->
+    <meta name="color-scheme" content="dark" />
 
-    <!-- No remote fonts. A marketplace is found on a phone on mobile data, and a
-         webfont either blocks first paint or reflows visibly when it lands. -->
+    <!-- ONE TYPEFACE: Manrope.
+         The previous build used the system stack to avoid a blocking request, and the
+         concern was right — so this is loaded the way that concern is actually
+         answered rather than by going without. `preconnect` opens the connection
+         before the CSS is parsed, and `display=swap` paints in the fallback
+         immediately and swaps when the font lands: no blank text, ever.
+
+         Manrope rather than Inter: Inter is the default of every AI-generated
+         interface and reads as one. Manrope is geometric enough to look designed at
+         display sizes, and its digits are unusually even, which matters on a page
+         whose job is comparing prices. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body class="h-full">
     <div id="root" class="h-full"></div>

@@ -18,7 +18,7 @@
 
 import { useState } from "react";
 import { Alert } from "../ui/Alert.jsx";
-import { Card } from "../ui/Card.jsx";
+import { Section } from "../ui/Page.jsx";
 import { api, ApiError } from "../../lib/api.js";
 import { formatWhen } from "../../lib/dates.js";
 
@@ -39,7 +39,7 @@ function PhotoGrid({ photos }) {
             href={photo.url}
             target="_blank"
             rel="noreferrer"
-            className="group block overflow-hidden rounded-xl border border-stone-200"
+            className="group block overflow-hidden rounded-xl border border-line"
           >
             <img
               src={photo.url}
@@ -53,10 +53,10 @@ function PhotoGrid({ photos }) {
             />
           </a>
 
-          <p className="mt-1 truncate text-xs text-stone-500">
+          <p className="mt-1 truncate text-xs text-muted">
             {photo.uploadedByName ?? "Deleted account"} · {formatWhen(photo.createdAt)}
           </p>
-          {photo.note && <p className="mt-0.5 text-xs text-stone-700">{photo.note}</p>}
+          {photo.note && <p className="mt-0.5 text-xs text-ink-soft">{photo.note}</p>}
         </li>
       ))}
     </ul>
@@ -97,13 +97,13 @@ function PhaseSection({ phase, photos, bookingStatus, bookingId, onAdded }) {
   }
 
   return (
-    <section className="border-t border-stone-200 pt-4 first:border-t-0 first:pt-0">
-      <h3 className="text-sm font-semibold text-stone-900">{PHASE_LABEL[phase]}</h3>
+    <section className="border-t border-line pt-4 first:border-t-0 first:pt-0">
+      <h3 className="text-sm font-semibold text-ink">{PHASE_LABEL[phase]}</h3>
 
       {photos.length > 0 ? (
         <PhotoGrid photos={photos} />
       ) : (
-        <p className="mt-1 text-sm leading-snug text-stone-500">
+        <p className="mt-1 text-sm leading-snug text-muted">
           {open
             ? "No photos yet. Worth a couple before it changes hands."
             : "No photos were taken."}
@@ -119,7 +119,7 @@ function PhaseSection({ phase, photos, bookingStatus, bookingId, onAdded }) {
             placeholder="Note (optional) — e.g. scratch on the lens barrel"
             aria-label={`Note for ${PHASE_LABEL[phase].toLowerCase()} photos`}
             maxLength={500}
-            className="h-10 w-full rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-900 placeholder:text-stone-400"
+            className="h-10 w-full rounded-lg border border-line-strong bg-surface px-3 text-sm text-ink placeholder:text-faint"
           />
 
           {/* A label wrapping a hidden input, rather than a button that clicks one
@@ -136,8 +136,8 @@ function PhaseSection({ phase, photos, bookingStatus, bookingId, onAdded }) {
             />
             <span
               className={[
-                "inline-flex h-9 cursor-pointer items-center rounded-xl border border-stone-300 bg-white px-3 text-sm font-medium text-stone-800 shadow-sm transition-all",
-                busy ? "cursor-wait opacity-60" : "hover:border-stone-400 hover:bg-stone-50",
+                "inline-flex h-9 cursor-pointer items-center rounded-xl border border-line-strong bg-surface px-3 text-sm font-medium text-ink shadow-sm transition-all",
+                busy ? "cursor-wait opacity-60" : "hover:border-faint hover:bg-raised",
               ].join(" ")}
             >
               {busy ? "Uploading…" : "Add photos"}
@@ -174,13 +174,15 @@ export function ConditionPhotos({ bookingId, bookingStatus, photos = [], onChang
   if (!anyOpen && all.length === 0) return null;
 
   return (
-    <Card className="p-5">
-      <h2 className="font-semibold text-stone-900">Condition</h2>
-      <p className="mt-0.5 text-sm leading-snug text-stone-600">
-        Optional, and visible only to the two of you.
-      </p>
-
-      <div className="mt-4 space-y-4">
+    <Section
+      title="Condition"
+      className="mt-8"
+      // The privacy note is an ACTION on the heading row rather than a line under it:
+      // it is the one thing that decides whether somebody uploads, so it should not be
+      // a caption they scroll past on the way to the buttons.
+      actions={<span className="text-sm text-muted">Visible only to the two of you</span>}
+    >
+      <div className="space-y-4">
         {["HANDOVER", "RETURN"].map((phase) => (
           <PhaseSection
             key={phase}
@@ -192,6 +194,6 @@ export function ConditionPhotos({ bookingId, bookingStatus, photos = [], onChang
           />
         ))}
       </div>
-    </Card>
+    </Section>
   );
 }

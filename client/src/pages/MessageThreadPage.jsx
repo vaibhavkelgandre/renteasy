@@ -43,7 +43,7 @@ export function MessageThreadPage() {
 
   if (state.id !== bookingId) {
     return (
-      <p className="text-stone-500" role="status">
+      <p className="text-muted" role="status">
         Loading…
       </p>
     );
@@ -71,7 +71,7 @@ export function MessageThreadPage() {
       back={
         <Link
           to="/messages"
-          className="text-sm font-medium text-brand-700 underline underline-offset-2"
+          className="text-sm font-medium text-accent underline underline-offset-2"
         >
           ← All messages
         </Link>

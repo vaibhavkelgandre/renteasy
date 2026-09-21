@@ -25,7 +25,7 @@ import { Logo } from "../components/Logo.jsx";
  */
 function SessionLoading() {
   return (
-    <div className="grid min-h-full place-items-center bg-stone-50">
+    <div className="grid min-h-full place-items-center bg-raised">
       <div className="animate-pulse">
         <Logo />
       </div>

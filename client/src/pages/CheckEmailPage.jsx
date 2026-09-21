@@ -20,7 +20,6 @@
  */
 
 import { Link, useLocation, Navigate } from "react-router-dom";
-import { Card } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Logo } from "../components/Logo.jsx";
 
@@ -34,15 +33,15 @@ export function CheckEmailPage() {
   if (!email) return <Navigate to="/register" replace />;
 
   return (
-    <div className="mx-auto w-full max-w-md px-5 py-10 sm:py-16">
+    <div className="mx-auto my-8 w-full max-w-[26rem] rounded-2xl border border-line bg-surface p-6 sm:my-14 sm:p-8">
       <div className="mb-8 flex justify-center">
         <Logo />
       </div>
 
-      <Card className="p-8 text-center">
-        <div className="mx-auto grid size-14 place-items-center rounded-full bg-brand-50">
+      <div className="text-center">
+        <div className="mx-auto grid size-14 place-items-center rounded-full bg-accent-soft">
           <svg
-            className="size-7 text-brand-600"
+            className="size-7 text-accent"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -56,16 +55,16 @@ export function CheckEmailPage() {
           </svg>
         </div>
 
-        <h1 className="mt-5 text-xl font-semibold tracking-tight text-stone-900">Check your inbox</h1>
+        <h1 className="mt-5 text-xl font-semibold tracking-tight text-ink">Check your inbox</h1>
 
         {/* The address is echoed back because the single most common failure here is a
             typo — and seeing it is what lets someone catch their own mistake. */}
-        <p className="mt-3 leading-relaxed text-stone-600">
+        <p className="mt-3 leading-relaxed text-muted">
           We&rsquo;ve emailed{" "}
-          <span className="font-medium text-stone-900">{email}</span> with what to do next.
+          <span className="font-medium text-ink">{email}</span> with what to do next.
         </p>
 
-        <p className="mt-4 text-sm leading-relaxed text-stone-500">
+        <p className="mt-4 text-sm leading-relaxed text-muted">
           The link works once and expires in 24 hours. If it doesn&rsquo;t arrive in a
           few minutes, check your spam folder.
         </p>
@@ -80,14 +79,14 @@ export function CheckEmailPage() {
               email-sending endpoint pointed at any address a caller can type. Someone
               who never receives the mail signs in — which an unverified account can do
               — and resends from the banner there. */}
-          <p className="text-sm text-stone-500">
+          <p className="text-sm text-muted">
             Wrong address?{" "}
-            <Link to="/register" className="font-medium text-brand-700 underline underline-offset-2">
+            <Link to="/register" className="font-medium text-accent underline underline-offset-2">
               Try again
             </Link>
           </p>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }

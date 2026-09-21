@@ -20,6 +20,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Card } from "../components/ui/Card.jsx";
+import { Rating } from "../components/ui/Rating.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { api } from "../lib/api.js";
 
@@ -39,7 +40,7 @@ function Initials({ name }) {
 
   return (
     <div
-      className="grid size-16 place-items-center rounded-full bg-brand-100 text-xl font-semibold text-brand-800"
+      className="grid size-16 place-items-center rounded-full bg-accent-soft text-xl font-semibold text-accent"
       aria-hidden="true"
     >
       {initials}
@@ -54,6 +55,7 @@ export function PublicProfilePage() {
   // the effect. A synchronous setState in an effect body is both an extra render and a
   // lint error; comparing the stored key to the current param says "stale" without one.
   const [result, setResult] = useState({ id: null, profile: null, error: null });
+  const [reviews, setReviews] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -62,6 +64,14 @@ export function PublicProfilePage() {
       .get(`/users/${id}/public`)
       .then((data) => active && setResult({ id, profile: data.profile, error: null }))
       .catch((error) => active && setResult({ id, profile: null, error: error.message }));
+
+    // A separate call, deliberately. Reviews are public and paginated and belong to
+    // their own endpoint; folding them into the profile response would make every
+    // profile read carry a list most callers do not want.
+    api
+      .get(`/users/${id}/reviews?limit=5`)
+      .then((data) => active && setReviews(data))
+      .catch(() => active && setReviews(null));
 
     return () => {
       active = false;
@@ -74,7 +84,7 @@ export function PublicProfilePage() {
     return (
       <div className="mx-auto w-full max-w-2xl">
         <Card className="p-8">
-          <div className="h-16 w-16 animate-pulse rounded-full bg-stone-100" />
+          <div className="h-16 w-16 animate-pulse rounded-full bg-raised" />
           <span className="sr-only" role="status">
             Loading profile
           </span>
@@ -86,11 +96,11 @@ export function PublicProfilePage() {
   if (result.error) {
     return (
       <div className="mx-auto w-full max-w-2xl text-center">
-        <h1 className="text-xl font-semibold text-stone-900">Profile not found</h1>
+        <h1 className="text-xl font-semibold text-ink">Profile not found</h1>
         {/* One message for every cause. The API answers an identical 404 for an unknown
             id, a malformed one and a suspended or deleted account — a stranger has no
             more reason to learn somebody was once here than to learn they never were. */}
-        <p className="mt-3 leading-relaxed text-stone-600">
+        <p className="mt-3 leading-relaxed text-muted">
           There is nobody here. The link may be wrong, or the account may no longer be
           active.
         </p>
@@ -109,12 +119,29 @@ export function PublicProfilePage() {
         <div className="flex items-center gap-5">
           <Initials name={profile.name} />
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold tracking-tight text-stone-900">
+            <h1 className="truncate text-xl font-semibold tracking-tight text-ink">
               {profile.name}
             </h1>
-            <p className="mt-1 text-sm text-stone-500">
+            <p className="mt-1 text-sm text-muted">
               Member since {memberSince(profile.memberSince)}
             </p>
+
+            {/* FR-033, FR-806. TWO RATINGS, NEVER ONE — being reliable to lend to
+                says very little about being reliable to lend TO, and a blended
+                average hides exactly what a reader came to find out. Each is shown
+                only once somebody has actually been rated that way. */}
+            {reviews?.rating?.asOwner?.count > 0 && (
+              <p className="mt-2 flex flex-wrap items-center gap-x-2 text-sm">
+                <span className="text-muted">As an owner</span>
+                <Rating rating={reviews.rating.asOwner} size="sm" />
+              </p>
+            )}
+            {reviews?.rating?.asRenter?.count > 0 && (
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm">
+                <span className="text-muted">As a renter</span>
+                <Rating rating={reviews.rating.asRenter} size="sm" />
+              </p>
+            )}
           </div>
         </div>
 
@@ -123,7 +150,7 @@ export function PublicProfilePage() {
             is. Phone and ID verification are the higher tiers (FR-035 to FR-038) and
             neither exists yet, so overstating this one would be dishonest. */}
         {profile.emailVerified && (
-          <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-800">
+          <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-good-soft px-3 py-1 text-sm font-medium text-good">
             <svg className="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
               <path
                 fillRule="evenodd"
@@ -135,21 +162,53 @@ export function PublicProfilePage() {
           </p>
         )}
 
-        <dl className="mt-7 grid grid-cols-2 gap-4 border-t border-stone-200 pt-6">
+        {reviews?.reviews?.length > 0 && (
+          <div className="mt-7 border-t border-line pt-6">
+            <h2 className="font-semibold text-ink">
+              What people said
+            </h2>
+            <ul className="mt-3 space-y-4">
+              {reviews.reviews.map((review) => (
+                <li key={review.id}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span aria-label={`${review.rating} out of 5`} className="text-accent">
+                      {"★".repeat(review.rating)}
+                      <span className="text-faint">{"★".repeat(5 - review.rating)}</span>
+                    </span>
+                    <span className="text-sm text-muted">
+                      {review.direction === "OF_OWNER" ? "as an owner" : "as a renter"}
+                    </span>
+                  </div>
+                  {review.body && (
+                    <p className="mt-1 leading-relaxed text-ink-soft">{review.body}</p>
+                  )}
+                  {review.reply_body && (
+                    <p className="mt-2 rounded-lg bg-raised px-3 py-2 text-sm leading-relaxed text-muted">
+                      <span className="font-medium">Reply: </span>
+                      {review.reply_body}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <dl className="mt-7 grid grid-cols-2 gap-4 border-t border-line pt-6">
           <div>
-            <dt className="text-sm text-stone-500">Listings</dt>
-            <dd className="mt-0.5 font-medium text-stone-900">
+            <dt className="text-sm text-muted">Listings</dt>
+            <dd className="mt-0.5 font-medium text-ink">
               {/* null means "listings do not exist yet", not "this person has none". */}
               {profile.listingCount ?? "—"}
             </dd>
           </div>
           <div>
-            <dt className="text-sm text-stone-500">Rating</dt>
-            <dd className="mt-0.5 font-medium text-stone-900">{profile.rating ?? "—"}</dd>
+            <dt className="text-sm text-muted">Rating</dt>
+            <dd className="mt-0.5 font-medium text-ink">{profile.rating ?? "—"}</dd>
           </div>
         </dl>
 
-        <p className="mt-5 text-sm leading-relaxed text-stone-500">
+        <p className="mt-5 text-sm leading-relaxed text-muted">
           Listings and reviews arrive with the rest of the marketplace.
         </p>
       </Card>
