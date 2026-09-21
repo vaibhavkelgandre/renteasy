@@ -276,3 +276,54 @@ export const DATES_HELD_STATUSES = ["ACCEPTED", "HANDED_OVER", "ACTIVE"];
 export function holdsDates(status) {
   return DATES_HELD_STATUSES.includes(status);
 }
+
+/**
+ * How long after a booking ends its thread stays writable.
+ *
+ * Loose ends are real — "you left your charger in the bag" arrives days later — but
+ * a channel to a stranger that never closes is a liability rather than a feature.
+ */
+export const CHAT_GRACE_DAYS = 14;
+
+/**
+ * Statuses in which either party may still send a message.
+ *
+ * REQUESTED IS INCLUDED, AND IT IS THE POINT OF THE FEATURE: the questions that
+ * decide whether a booking should be accepted — does it come with a charger, can I
+ * collect at eight — all happen before anybody has agreed to anything.
+ *
+ * THE REFUSED ONES ARE THE SAFETY RULE. Without them, "request an item, get
+ * declined, keep messaging the owner forever" is a harassment channel that anybody
+ * can open against any lister by pressing one button. A declined or cancelled
+ * booking means no relationship exists, so the thread becomes readable history and
+ * nothing more.
+ *
+ * COMPLETED is absent here and handled separately — see `canMessage`, which gives it
+ * a grace window rather than closing the moment the item is handed back.
+ */
+export const CHAT_OPEN_STATUSES = ["REQUESTED", "ACCEPTED", "HANDED_OVER", "ACTIVE", "RETURNED"];
+
+/**
+ * Whether this booking's thread accepts new messages right now.
+ *
+ * READING IS NEVER RESTRICTED by this — a party can always see what was said, which
+ * is half the reason to keep the conversation on the platform at all. This governs
+ * writing only.
+ *
+ * @param {object} booking Needs `status` and, for the grace window, `ends_at`.
+ * @param {Date} [now]
+ * @returns {boolean}
+ */
+export function canMessage(booking, now = new Date()) {
+  if (CHAT_OPEN_STATUSES.includes(booking.status)) return true;
+
+  // A completed rental stays writable for a fortnight. Measured from the booking's
+  // own end rather than from when it was marked complete: an owner who confirms the
+  // return three weeks late should not thereby extend a channel by three weeks.
+  if (booking.status === "COMPLETED") {
+    const closesAt = new Date(booking.ends_at).getTime() + CHAT_GRACE_DAYS * 86_400_000;
+    return now.getTime() < closesAt;
+  }
+
+  return false;
+}

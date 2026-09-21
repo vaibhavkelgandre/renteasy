@@ -42,6 +42,8 @@ import {
   destroyPrivateAsset,
 } from "../config/cloudinary.js";
 import { buildQuote, billableHours } from "../utils/quote.js";
+import { loadBookingForParty } from "./bookingAccess.js";
+import { postSystemMessage, SYSTEM_LINES } from "./messageService.js";
 import {
   notifyBookingRequested,
   notifyBookingTransition,
@@ -74,25 +76,6 @@ function present(booking, actor) {
   };
 }
 
-/**
- * Loads a booking and asserts the caller is party to it — FR-512.
- *
- * 404 FOR EVERYONE ELSE, never 403. A booking is a private arrangement between two
- * people; a stranger has no more reason to learn that a particular id is somebody's
- * camera rental than to learn it is nothing at all. A 403 would confirm it exists.
- *
- * @param {string} id
- * @param {object} actor
- * @returns {Promise<object>}
- * @throws {AppError} 404.
- */
-async function loadBookingForParty(id, actor) {
-  const booking = await findBookingById(id);
-  if (!booking) throw notFound("Booking not found");
-
-  if (!roleInBooking(booking, actor)) throw notFound("Booking not found");
-  return booking;
-}
 
 /**
  * Requests a booking — FR-500 to FR-504.
@@ -349,6 +332,11 @@ export async function actOnBooking(id, actor, action, comment = null) {
    * something the trail does not yet contain.
    */
   await notifyBookingTransition(booking, action, actor);
+
+  // A line in the thread, so the conversation reads as the story of the rental
+  // rather than a box beside it. Never notifies — the transition above already did,
+  // and two rings for one event is noise. Never throws, for the same reason.
+  if (SYSTEM_LINES[action]) await postSystemMessage(id, SYSTEM_LINES[action]);
 
   return present(updated, actor);
 }

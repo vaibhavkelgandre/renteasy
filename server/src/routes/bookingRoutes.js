@@ -29,8 +29,27 @@ import {
   bookingListQuerySchema,
 } from "../validators/bookingValidator.js";
 import { validateBody, validateParams, validateQuery } from "../validators/validate.js";
+import {
+  getMessages,
+  postMessage,
+  postShareContact,
+  postReportMessage,
+  getUnreadMessages,
+  getMessageAttachment,
+  getThreads,
+} from "../controllers/messageController.js";
+import {
+  messageQuerySchema,
+  sendMessageSchema,
+  reportMessageSchema,
+  messageParamsSchema,
+} from "../validators/messageValidator.js";
 import { requireAuth, requireVerifiedEmail } from "../middlewares/authMiddleware.js";
-import { acceptBookingPhotos, handleUploadErrors } from "../middlewares/uploadMiddleware.js";
+import {
+  acceptBookingPhotos,
+  acceptMessageAttachment,
+  handleUploadErrors,
+} from "../middlewares/uploadMiddleware.js";
 
 const router = Router();
 
@@ -90,6 +109,50 @@ router.get(
   "/:id/photos/:photoId/file",
   validateParams(bookingPhotoParamsSchema, "Photo not found"),
   getBookingPhotoFile
+);
+
+/**
+ * ---- Messages ----
+ *
+ * NO `conversations` RESOURCE, because the booking is the conversation — chat opens
+ * when a request is sent and there are exactly two parties for its whole life. Every
+ * route below inherits `loadBookingForParty`, so messaging added no authorization
+ * rule of its own.
+ *
+ * `requireVerifiedEmail` is absent for the same reason as the photo routes: both
+ * parties arrived through a booking that already demanded it of the renter.
+ */
+
+// BOTH BEFORE `/:id/messages`, or the uuid param swallows the literal segment.
+router.get("/messages/unread-count", getUnreadMessages);
+router.get("/messages/threads", getThreads);
+
+router.get("/:id/messages", withBookingId, validateQuery(messageQuerySchema), getMessages);
+
+router.post(
+  "/:id/messages",
+  withBookingId,
+  // Parses multipart when there is a file and passes plain JSON through untouched,
+  // so one endpoint serves both a text message and a photo with a caption.
+  acceptMessageAttachment,
+  handleUploadErrors,
+  validateBody(sendMessageSchema),
+  postMessage
+);
+
+router.post("/:id/messages/share-contact", withBookingId, postShareContact);
+
+router.post(
+  "/:id/messages/:messageId/report",
+  validateParams(messageParamsSchema, "Message not found"),
+  validateBody(reportMessageSchema),
+  postReportMessage
+);
+
+router.get(
+  "/:id/messages/:messageId/file",
+  validateParams(messageParamsSchema, "Message not found"),
+  getMessageAttachment
 );
 
 export { router as bookingRoutes };

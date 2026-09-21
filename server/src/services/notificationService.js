@@ -19,6 +19,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
 } from "../repositories/notificationRepository.js";
+import { countUnreadInThread } from "../repositories/messageRepository.js";
 import { notFound } from "../utils/errors.js";
 
 /**
@@ -165,6 +166,52 @@ export async function notifyBookingRequested(booking) {
     entityType: "BOOKING",
     entityId: booking.id,
     message: `Someone wants to rent your "${booking.listing_title}".`,
+  });
+}
+
+/**
+ * Tells somebody they have a new message — but only once per burst.
+ *
+ * THE DEDUPE IS THE WHOLE POINT. A chat is bursty by nature: somebody sends four
+ * lines in twenty seconds, and four rings turns the bell from a signal into
+ * something people learn to ignore — at which point it stops working for the
+ * booking notifications too, which are the ones that actually need answering.
+ *
+ * So: ring only if the recipient has NOTHING unread in this thread already. Once
+ * they read it the counter resets, and the next message rings again. One `EXISTS`
+ * check buys the difference between a useful bell and a noisy one.
+ *
+ * Never rejects, same contract as every other notify (FR-985) — a bell that missed
+ * a message must not fail the message.
+ *
+ * @param {object} input
+ * @param {object} input.booking Needs `id` and `listing_title`.
+ * @param {string} input.recipientId
+ * @param {string} input.senderName
+ * @returns {Promise<void>}
+ */
+export async function notifyNewMessage({ booking, recipientId, senderName }) {
+  try {
+    // Checked BEFORE the message is counted as unread would be wrong — this runs
+    // after the insert, so the new message itself is already in the count. What is
+    // being asked is whether there was more than one.
+    // `> 1`, not `> 0`: this runs AFTER the insert, so the message that triggered it
+    // is already counted. One means "this is the only thing waiting" — ring. More
+    // means they have not looked since the last one — stay quiet.
+    if ((await countUnreadInThread(booking.id, recipientId)) > 1) return;
+  } catch (error) {
+    // A failed check must not swallow the notification; ring rather than stay quiet.
+    console.error(`[notify] unread check for ${booking.id} failed: ${error.message}`);
+  }
+
+  await notify({
+    userId: recipientId,
+    type: "BOOKING_MESSAGE",
+    entityType: "BOOKING",
+    entityId: booking.id,
+    // FR-987 again: the sender and the item, never the message body. A chat line
+    // could contain anything, and this is read on a lock screen.
+    message: `${senderName} sent you a message about "${booking.listing_title}".`,
   });
 }
 

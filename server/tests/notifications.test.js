@@ -155,6 +155,25 @@ describe("FR-985 — a notification failure never fails the action", () => {
     const { owner, renter, listingId } = await marketplace();
     const booking = (await book(renter.agent, listingId)).body.data.booking;
 
+    // CAPTURE THE REAL DEFINITION FIRST, and restore exactly that.
+    //
+    // The first version of this test hardcoded the list it put back, which worked
+    // until migration 010 added BOOKING_MESSAGE. From then on, running this file
+    // silently NARROWED the constraint for every test after it — and because
+    // `notify()` swallows its own errors by design (FR-985), the symptom was three
+    // unrelated tests in messages.test.js finding no notifications, with nothing
+    // anywhere pointing at a constraint.
+    //
+    // Exactly the failure the migration rules warn about — "a re-declared CHECK
+    // list must copy the newest" — one layer down, in a test's cleanup. Reading the
+    // definition out of the catalogue means it can never drift again.
+    const { rows: before } = await query(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+        WHERE conname = 'notifications_type_check'
+          AND conrelid = 'notifications'::regclass`
+    );
+    const original = before[0].def;
+
     // Break it for real rather than mocking the service: the requirement is about
     // what happens when the database says no, and a mock would prove only that the
     // code calls a function that was told to fail.
@@ -181,10 +200,7 @@ describe("FR-985 — a notification failure never fails the action", () => {
       expect(accepted.body.data.booking.status).toBe("ACCEPTED");
     } finally {
       await query(`ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check`);
-      await query(`ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN (
-        'BOOKING_REQUESTED','BOOKING_ACCEPTED','BOOKING_DECLINED','BOOKING_CANCELLED',
-        'BOOKING_CANCELLED_BY_OWNER','BOOKING_EXPIRED','BOOKING_HANDED_OVER',
-        'BOOKING_RECEIPT_CONFIRMED','BOOKING_RETURNED','BOOKING_COMPLETED'))`);
+      await query(`ALTER TABLE notifications ADD CONSTRAINT notifications_type_check ${original}`);
     }
   });
 });

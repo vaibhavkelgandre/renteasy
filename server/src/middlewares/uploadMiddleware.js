@@ -62,6 +62,28 @@ const bookingUpload = multer({
 export const acceptBookingPhotos = bookingUpload.array("photos", MAX_PHOTOS_PER_UPLOAD);
 
 /**
+ * A chat attachment: one file, one text field.
+ *
+ * ITS OWN INSTANCE, for the same reason `bookingUpload` is. `files: 1` is a real
+ * limit — a chat message carries one image, and allowing six would let one POST
+ * buffer 30MB. `fields: 1` is exactly `body`, the caption.
+ */
+const messageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PHOTO_BYTES, files: 1, fields: 1 },
+});
+
+/**
+ * Parses `multipart/form-data` for one chat attachment under the name `attachment`.
+ *
+ * `.single()`, not `.array()`, so the controller reads `req.file` rather than
+ * `req.files[0]` — one fewer place to forget the index.
+ *
+ * @type {import("express").RequestHandler}
+ */
+export const acceptMessageAttachment = messageUpload.single("attachment");
+
+/**
  * Parses `multipart/form-data` with up to eight files under the field name `photos`.
  *
  * @type {import("express").RequestHandler}
