@@ -27,6 +27,7 @@ import { profileRoutes, publicUserRoutes } from "./routes/profileRoutes.js";
 import { listingRoutes } from "./routes/listingRoutes.js";
 import { bookingRoutes } from "./routes/bookingRoutes.js";
 import { notificationRoutes } from "./routes/notificationRoutes.js";
+import { reviewRoutes } from "./routes/reviewRoutes.js";
 import { sendError } from "./utils/response.js";
 
 const app = express();
@@ -68,6 +69,7 @@ app.use("/api/users", publicUserRoutes);
 app.use("/api/listings", listingRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/reviews", reviewRoutes);
 
 // ---- 404 ----
 // Reached only when no route above matched. Must come after every route and before

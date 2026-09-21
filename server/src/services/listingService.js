@@ -38,6 +38,7 @@ import {
 } from "../config/cloudinary.js";
 import { MAX_PHOTOS_PER_LISTING } from "../middlewares/uploadMiddleware.js";
 import { buildQuote } from "../utils/quote.js";
+import { findRatingsForListings } from "../repositories/reviewRepository.js";
 
 /**
  * Fetches a listing and asserts the caller owns it.
@@ -169,7 +170,24 @@ export async function getListing(id, actor) {
   const isOwner = actor && listing.owner_id === actor.id;
   if (listing.status !== "PUBLISHED" && !isOwner) throw notFound("Listing not found");
 
-  return withPhotoUrls(listing, await findPhotosForListing(id));
+  /**
+   * FR-806's second half — a listing's rating.
+   *
+   * THE AVERAGE OF WHAT RENTERS SAID ABOUT ITS OWNER, for bookings of this listing.
+   * There is deliberately no separate "review of a listing" and there should not
+   * be: a review is of a person (FR-800), and a second kind would let the two
+   * disagree about the same rental.
+   *
+   * Derived rather than stored, like every other aggregate here. If it ever costs
+   * enough to matter, the fix is a column maintained by the publishing sweep — not
+   * a different shape at this layer.
+   */
+  const ratings = await findRatingsForListings([id]);
+
+  return {
+    ...withPhotoUrls(listing, await findPhotosForListing(id)),
+    rating: ratings[id] ?? { average: null, count: 0 },
+  };
 }
 
 /**

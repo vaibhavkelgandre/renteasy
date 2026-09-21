@@ -135,6 +135,33 @@ only ever returns bookings the caller is a party to.
 **The route order matters.** `/messages/unread-count` and `/messages/threads` are
 declared *before* `/:id/messages`, or the uuid param swallows the literal segment.
 
+### Reviews
+
+Full notes: [features/11-reviews.md](../features/11-reviews.md).
+
+| Method | Path | Auth | Body | Success | Errors |
+|---|---|---|---|---|---|
+| `POST` | `/bookings/:id/reviews` | Session (party) | `{ rating, body? }` | `201` `{ review }` | `400`, **`409`**, `404` |
+| `GET` | `/bookings/:id/reviews` | Session (party) | — | `200` `{ reviews, canReview, mine }` | `404` |
+| `PATCH` | `/reviews/:reviewId` | Session (author) | `{ rating?, body? }` | `200` `{ review }` | `400`, **`409`**, `403`, `404` |
+| `POST` | `/reviews/:reviewId/reply` | Session (subject) | `{ body }` | `201` `{ review }` | `400`, `409`, `403`, `404` |
+| `GET` | `/users/:id/reviews` | **Public** | — (`direction`, `limit`, `offset`) | `200` `{ reviews, total, rating }` | `404` |
+
+**`GET /bookings/:id/reviews` returns three different things to three readers** — the
+author always sees their own, the subject only once published, anybody else only
+published ones. That is FR-804's blind period, and it is enforced in the service
+rather than left to the client to filter.
+
+**`409` on POST** means the booking is not completed, or you have already reviewed
+it. **`409` on PATCH** means the review is now published — the edit window closes on
+publication, not only at 48 hours, or you could rewrite yours having read theirs.
+
+**`403`, not `404`, on PATCH and reply**: the caller can see the review exists, they
+are simply not its author (or not its subject).
+
+**`GET /users/:id/reviews` is public** (FR-807) and returns only published reviews —
+filtered in the repository, so a public endpoint cannot forget to.
+
 ### Notifications
 
 Full notes: [features/09-notifications.md](../features/09-notifications.md). Every route is

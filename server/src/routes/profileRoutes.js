@@ -27,8 +27,10 @@ import {
   deleteAccountSchema,
   publicProfileParamsSchema,
 } from "../validators/profileValidator.js";
-import { validateBody, validateParams } from "../validators/validate.js";
+import { validateBody, validateParams, validateQuery } from "../validators/validate.js";
 import { requireAuth } from "../middlewares/authMiddleware.js";
+import { getUserReviews } from "../controllers/reviewController.js";
+import { reviewListQuerySchema } from "../validators/reviewValidator.js";
 
 const router = Router();
 
@@ -72,6 +74,24 @@ publicRouter.get(
   // becomes an oracle.
   validateParams(publicProfileParamsSchema, "Profile not found"),
   getPublicUserProfile
+);
+
+/**
+ * FR-807 — reviews are publicly readable, so this needs no auth either.
+ *
+ * It sits on the public router alongside the profile because they answer the same
+ * question from two angles: who is this person, and what have people said about
+ * them. The repository filters to PUBLISHED reviews, so there is nothing an
+ * anonymous caller could see that a signed-in stranger could not.
+ *
+ * Same 404 wording as the profile above, for the same reason: a mismatch between
+ * the two turns the pair into an oracle for which uuids are real accounts.
+ */
+publicRouter.get(
+  "/:id/reviews",
+  validateParams(publicProfileParamsSchema, "Profile not found"),
+  validateQuery(reviewListQuerySchema),
+  getUserReviews
 );
 
 export { router as profileRoutes, publicRouter as publicUserRoutes };

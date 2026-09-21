@@ -38,6 +38,8 @@ import {
   getMessageAttachment,
   getThreads,
 } from "../controllers/messageController.js";
+import { postReview, getReviews } from "../controllers/reviewController.js";
+import { writeReviewSchema } from "../validators/reviewValidator.js";
 import {
   messageQuerySchema,
   sendMessageSchema,
@@ -154,5 +156,15 @@ router.get(
   validateParams(messageParamsSchema, "Message not found"),
   getMessageAttachment
 );
+
+/**
+ * ---- Reviews (FR-800 to FR-803) ----
+ *
+ * Scoped by the booking, so both inherit `loadBookingForParty`. Editing and
+ * replying live on `/api/reviews/:reviewId` instead: the caller already holds a
+ * review id by then and the booking adds nothing to either question.
+ */
+router.post("/:id/reviews", withBookingId, validateBody(writeReviewSchema), postReview);
+router.get("/:id/reviews", withBookingId, getReviews);
 
 export { router as bookingRoutes };

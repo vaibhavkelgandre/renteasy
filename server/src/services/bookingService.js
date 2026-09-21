@@ -44,6 +44,7 @@ import {
 import { buildQuote, billableHours } from "../utils/quote.js";
 import { loadBookingForParty } from "./bookingAccess.js";
 import { postSystemMessage, SYSTEM_LINES } from "./messageService.js";
+import { notifyReviewInvited } from "./notificationService.js";
 import {
   notifyBookingRequested,
   notifyBookingTransition,
@@ -337,6 +338,11 @@ export async function actOnBooking(id, actor, action, comment = null) {
   // rather than a box beside it. Never notifies — the transition above already did,
   // and two rings for one event is noise. Never throws, for the same reason.
   if (SYSTEM_LINES[action]) await postSystemMessage(id, SYSTEM_LINES[action]);
+
+  // FR-800's starting gun. Both parties, unlike every other booking notification —
+  // completion opens something NEW for each of them rather than announcing one
+  // person's action to the other.
+  if (check.to === "COMPLETED") await notifyReviewInvited(booking);
 
   return present(updated, actor);
 }

@@ -216,6 +216,57 @@ export async function notifyNewMessage({ booking, recipientId, senderName }) {
 }
 
 /**
+ * Tells somebody a review about them is now readable — FR-804's moment.
+ *
+ * Sent when the blind period ends, by either trigger: both parties wrote, or the
+ * window ran out. That instant is the only one worth a notification, because it is
+ * the first time either of them can read anything.
+ *
+ * NO RATING IN THE MESSAGE. "You were given 2 stars" on a lock screen is a worse
+ * way to find out than opening the app, and FR-987's reasoning — these are read in
+ * public — covers a number that stings as much as one that is valuable.
+ *
+ * @param {object} input
+ * @param {object} input.review Needs `booking_id` and `listing_title`.
+ * @param {string} input.recipientId
+ * @returns {Promise<void>} Never rejects.
+ */
+export async function notifyReviewPublished({ review, recipientId }) {
+  if (!recipientId) return;
+
+  await notify({
+    userId: recipientId,
+    type: "REVIEW_PUBLISHED",
+    entityType: "BOOKING",
+    entityId: review.booking_id,
+    message: `Reviews for "${review.listing_title}" are now visible.`,
+  });
+}
+
+/**
+ * Invites both parties to review each other once a rental completes — FR-800.
+ *
+ * Sent to BOTH, unlike every other booking notification, and that is the exception
+ * rather than a mistake: `notifyBookingTransition` tells the party who did NOT act,
+ * because an action needs no announcing to the person who took it. Completion is
+ * different — it opens something new for both of them to do.
+ *
+ * @param {object} booking Needs `id`, `listing_title`, `owner_id`, `renter_id`.
+ * @returns {Promise<void>} Never rejects.
+ */
+export async function notifyReviewInvited(booking) {
+  for (const userId of [booking.owner_id, booking.renter_id]) {
+    await notify({
+      userId,
+      type: "REVIEW_INVITED",
+      entityType: "BOOKING",
+      entityId: booking.id,
+      message: `How did it go? You can now review the other party for "${booking.listing_title}".`,
+    });
+  }
+}
+
+/**
  * One page of the caller's notifications — FR-986.
  *
  * @param {object} actor

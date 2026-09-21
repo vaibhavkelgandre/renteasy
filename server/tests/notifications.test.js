@@ -107,15 +107,21 @@ describe("who hears about what", () => {
     await act(renter.agent, booking.id, "RETURN");
     await act(owner.agent, booking.id, "COMPLETE");
 
+    // REVIEW_INVITED is filtered out of both, and its absence here is the point:
+    // it is the ONE booking notification sent to both parties, so it says nothing
+    // about the "never tell somebody about their own action" rule this test exists
+    // to pin. It has its own test in reviews.test.js.
+    const transitions = (list) => list.map((n) => n.type).filter((t) => t !== "REVIEW_INVITED");
+
     // The owner acted three times and hears about the renter's two.
-    expect((await inbox(owner.agent)).map((n) => n.type)).toEqual([
+    expect(transitions(await inbox(owner.agent))).toEqual([
       "BOOKING_RETURNED",
       "BOOKING_RECEIPT_CONFIRMED",
       "BOOKING_REQUESTED",
     ]);
 
     // The renter acted twice and hears about the owner's three.
-    expect((await inbox(renter.agent)).map((n) => n.type)).toEqual([
+    expect(transitions(await inbox(renter.agent))).toEqual([
       "BOOKING_COMPLETED",
       "BOOKING_HANDED_OVER",
       "BOOKING_ACCEPTED",
