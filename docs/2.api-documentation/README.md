@@ -113,7 +113,7 @@ scoped by `loadBookingForParty`, so a stranger gets **404, never 403**.
 |---|---|---|---|---|---|
 | `GET` | `/bookings/messages/unread-count` | Session | — | `200` `{ total, byBooking }` | `401` |
 | `GET` | `/bookings/messages/threads` | Session | — | `200` `{ threads }` | `401` |
-| `GET` | `/bookings/:id/messages` | Session (party) | — (`since`, `before`, `limit`) | `200` `{ messages, canSend, bookingStatus }` | `400`, `404` |
+| `GET` | `/bookings/:id/messages` | Session (party) | — (`since`, `before`, `limit`) | `200` `{ messages, canSend, bookingStatus, otherPartyId }` | `400`, `404` |
 | `POST` | `/bookings/:id/messages` | Session (party) | `{ body }` or `multipart` — `attachment` + `body` | `201` `{ message }` | `400`, **`409`**, `404` |
 | `POST` | `/bookings/:id/messages/share-contact` | Session (party) | — | `201` `{ message }` | `400`, `409`, `404` |
 | `POST` | `/bookings/:id/messages/:messageId/report` | Session (party) | `{ reason }` | `200` `{ reported }` | `400`, `404` |
@@ -184,6 +184,56 @@ whether a uuid they guessed exists.
 
 ---
 
+## Socket events
+
+Full notes: [features/12-realtime.md](../features/12-realtime.md).
+
+**One endpoint, `/api/socket.io`** — under `/api` so the proxy rule that already forwards this API
+carries the handshake too, with nothing new to configure in Nginx or Vite. Authentication is the
+session **cookie**, sent with the handshake: a browser cannot set headers on a WebSocket. The
+handshake also checks `Origin` against `APP_URL`, because WebSockets are **not subject to CORS** and
+without it any page could open a socket carrying the visitor's own cookie.
+
+Every failure to connect is the same opaque refusal — `"Authentication required"` — collapsing no
+cookie, expired, tampered, deleted and suspended, for the same reason `verifyAuthToken` returns null
+for all of them.
+
+### Client → server
+
+Acknowledgements use the standard envelope **plus `status`**, since an ack has no response line and
+without it a client could not tell a `409` from a `404`. Every event re-reads the caller from the
+database before acting and closes the socket on a `401` — [NFR-5](../4.non-functional-requirements.md).
+
+| Event | Payload | Ack | Errors |
+|---|---|---|---|
+| `thread:join` | `{ bookingId, since? }` | `{ messages, canSend, bookingStatus, otherPartyId, otherParty }` | `400`, `404` |
+| `thread:leave` | `{ bookingId }` | none | — |
+| `message:send` | `{ bookingId, body }` | `{ message }` | `400`, `409`, `404` |
+| `thread:typing` | `{ bookingId, isTyping }` | none | dropped silently |
+| `thread:read` | `{ bookingId }` | `{ bookingId, userId }` | `404` |
+
+`otherParty` is `{ id, online, lastSeenAt, readAt }` and is returned **only here**, never on the HTTP
+list — it costs two extra reads, and the HTTP route is also the fallback poll.
+
+`thread:join` doubles as the reconnect path: `since` is the same cursor the HTTP poll uses, so a
+client asks the same question over either transport. It is **inclusive at its boundary** — see
+[troubleshooting](../troubleshooting.md) — so clients merge by message id.
+
+### Server → client
+
+| Event | Room | Payload |
+|---|---|---|
+| `message:new` | `booking:<id>` | `{ bookingId, message }` |
+| `thread:typing` | `booking:<id>`, minus the sender | `{ bookingId, userId, name, isTyping }` |
+| `thread:read` | `booking:<id>` | `{ bookingId, userId, readAt }` |
+| `presence:changed` | `booking:<id>` | `{ bookingId, userId, online, lastSeenAt? }` |
+| `notification:new` | `user:<id>` | `{ notification }` |
+
+`message:new` goes to the **whole** room including the sender, because their other tabs must receive
+it and the publisher cannot know which socket asked — clients dedupe by id.
+
+---
+
 ## Rate limits
 
 Unauthenticated endpoints only — **never a global limiter**, which would throttle ordinary browsing.
@@ -195,6 +245,12 @@ Unauthenticated endpoints only — **never a global limiter**, which would throt
 | `POST /auth/verify` | IP | all requests — it is a token-guessing surface |
 | `POST /auth/forgot-password` | IP | **all requests** — a success sends an email. **Keyed on the IP, never the submitted address**: a per-address limit would answer differently for one recently used, which is the enumeration oracle rebuilt in the limiter |
 | `POST /auth/reset-password` | IP | all requests — token guessing. Deliberately a **separate budget** from `/auth/verify`, so exhausting one cannot lock someone out of the other |
+
+**Two socket events are limited, and only those two.** `thread:typing` (20 per 10s) and
+`thread:read` (30 per 10s) have no HTTP equivalent, cost a client nothing to send, and pass through
+no middleware — so a loop is possible and nothing would stop it. `message:send` is **not** limited:
+it writes a row and sits under the same absent policy as the HTTP route beside it. Per socket rather
+than per user, because five tabs are five clients; the surplus is **dropped, not disconnected**.
 
 Off under `NODE_ENV=test` unless `RATE_LIMIT_ENABLED=true`. The flag is read **per request**, not
 captured at import, so a test can toggle it.

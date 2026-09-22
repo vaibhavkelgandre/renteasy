@@ -140,19 +140,43 @@ tell their two conversations apart.
 `MessageThread` did not change when it moved. It was already self-contained —
 fetching and polling its own data — so the new page only supplies a frame.
 
-## 8. Polled, not pushed
+## 8. Pushed, with polling kept as the fallback
 
-3 seconds while a thread is open, versus the bell's 60.
+**This section used to argue the opposite, and the argument was right at the time.** It
+read: *"There is no WebSocket in this product. Adding one means a second transport to
+operate, secure and reconnect — and a pub/sub backplane the moment a second instance
+exists. Messages here are minutes apart, not seconds."*
 
-There is no WebSocket in this product. Adding one means a second transport to
-operate, secure and reconnect — **and a pub/sub backplane the moment a second
-instance exists**, because a message published on one would never reach a socket held
-by the other. Messages here are minutes apart, not seconds.
+Every clause of that still holds as a **cost**; what changed is that the cost was paid
+deliberately, for the three features it unlocks rather than for the latency. Typing
+indicators, presence and read receipts all need a connection as the signal, and this
+document's own §10 listed all three as "not built — they need the transport §8 argues
+against". See **[12 — Realtime](12-realtime.md)** for the transport itself.
 
-**The `?since=` contract is what an SSE stream would ask on reconnect**, so the
-upgrade — if it is ever wanted — changes the transport and not the API. SSE rather
-than WebSockets, if so: chat only needs push in one direction, and sending is an
-ordinary POST.
+What the thread does now:
+
+| | |
+|---|---|
+| On mount | one HTTP load, so the conversation renders without waiting on a handshake |
+| `thread:join` | authorizes, replays via `since`, subscribes, reports the other party |
+| `message:new` | pushed to everyone reading the thread |
+| Not connected | the 3-second poll, exactly as before |
+
+**The prediction in the old text turned out to be accurate: the API did not change.**
+`?since=` is what `thread:join` sends on a reconnect, and `findMessages` is the same
+query the poll used. The transport moved; the question did not.
+
+**Everything merges by message id**, which is what lets those three sources overlap —
+and they overlap constantly: the sender receives their own broadcast as well as its
+acknowledgement, a poll and a push can carry the same row, and `since` is inclusive at
+its boundary (see [troubleshooting](../troubleshooting.md)). At-least-once with a
+dedupe by id is the contract; exactly-once is not, and never was.
+
+**Sending text goes over the socket, attachments stay on HTTP** — and neither is a
+copy of the other, because both call `messageService.sendMessage`. That function is
+where "who may write to this thread" is decided, so the two transports cannot drift
+into disagreeing about it. Multipart keeps the magic-byte sniffing and the size limit;
+a file has no business being reassembled out of socket frames.
 
 ## 9. Schema
 
@@ -177,8 +201,11 @@ the notification type list.
   built.
 - **No block.** Closing the thread with the booking covers the case a block would.
 - **No editing or deleting a message**, by design — see §3.
-- **No typing indicators, presence or read receipts.** All three need the transport
-  §8 argues against.
+- ~~**No typing indicators, presence or read receipts.** All three need the transport
+  §8 argues against.~~ **All three are built** — see [12 — Realtime](12-realtime.md).
+  Left struck through rather than deleted, because *"they need the transport §8 argues
+  against"* is why §8 was reconsidered at all: these were the features that justified
+  it, and the latency never was.
 - **No search across conversations**, and no archiving. Both are inbox features that
   earn their place at a volume this product does not have.
 - **No off-platform-payment warning.** It would warn about leaving a payment system

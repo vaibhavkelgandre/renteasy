@@ -36,6 +36,12 @@ never renumbered and never reused.
 - [04 — Listings, the rate card and photos](features/04-listings.md) ✅ built
 - [05 — Browse, search and pagination](features/05-browse.md) ✅ built
 - [06 — Bookings, the double-booking guard and the state machine](features/06-bookings.md) 🟡 API built
+- [07 — Availability and the double-booking guard](features/07-availability.md) ✅ built
+- [08 — Handover, return and completion](features/08-handover.md) 🟡 late fees and damage claims to come
+- [09 — Notifications and the bell](features/09-notifications.md) ✅ built
+- [10 — Messaging between the two parties](features/10-messaging.md) ✅ built
+- [11 — Two-way reviews](features/11-reviews.md) ✅ built
+- [12 — Realtime: the socket transport](features/12-realtime.md) ✅ built
 
 ## Four docs are not optional
 

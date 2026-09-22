@@ -6,6 +6,119 @@ Newest first.
 
 ---
 
+## Socket.IO connects but is not a WebSocket — a proxy rule that forwards everything except the upgrade
+
+**Symptom.** Messaging works. Nothing errors, no test fails, the browser shows a
+`/api/socket.io` request completing. And the transport is HTTP long-polling, not a WebSocket — so
+every "push" is a poll with extra steps.
+
+**Root cause.** Vite's proxy rule was `{ "/api": { target: "…", changeOrigin: false } }`. The
+handshake lives under `/api`, so it *is* forwarded — but a plain HTTP proxy does not forward the
+`Upgrade` request that turns the connection into a WebSocket. Socket.IO falls back to polling by
+design, permanently and silently, because falling back is exactly what it is supposed to do when an
+upgrade fails.
+
+**Fix.** `ws: true` on the proxy rule. Nginx needs `proxy_set_header Upgrade` for the same reason.
+
+**How to tell**, since nothing surfaces it: `socket.io.engine.transport.name` in the console is
+`"websocket"` when the upgrade landed and `"polling"` when it did not.
+
+**A second trap in the same line.** `changeOrigin` must stay **false**. It rewrites the `Origin`
+header to the target's address, and the API's socket handshake compares `Origin` against `APP_URL` —
+so turning it on refuses every connection, while HTTP carries on working perfectly, because HTTP
+does not check origin.
+
+---
+
+## Every deploy stalled ten seconds — an open WebSocket never drains
+
+**Symptom.** After adding the socket transport, `SIGTERM` stopped shutting the process down cleanly.
+The log reached "shutting down" and then sat there until the ten-second forced-exit backstop fired.
+
+**Root cause.** `server.close()` stops accepting new connections and then waits for the existing ones
+to finish. **A WebSocket never finishes** — it is a connection deliberately held open — so the drain
+callback is never called and every shutdown falls through to the timeout.
+
+**Fix.** Drop the sockets *before* draining, in `shutdown()`:
+
+```js
+stopSockets();       // io.disconnectSockets(true)
+server.close(…);
+```
+
+**Measured, not reasoned about.** A throwaway probe: `close()` with one live socket was still pending
+after 2 seconds; after `disconnectSockets(true)` it drained immediately.
+
+**`disconnectSockets`, not `io.close()`.** `io.close()` also closes the underlying HTTP server, which
+would reach around the ordered drain sequence in `server.js` and close it a second time.
+
+**A side benefit worth keeping:** dropping them first means clients start their reconnect backoff at
+the moment of the signal rather than after a timeout, so they are already queued against the
+replacement process.
+
+---
+
+## `?since=` re-sends one message every time — a cursor that loses microseconds in transit
+
+**Symptom.** A reconnecting client asked for everything newer than the newest message it held, and
+got that message back again. Found by a test asserting an exact count, not in use.
+
+**Root cause.** Postgres stores `timestamptz` with **microsecond** precision; the `pg` driver hands
+back a JavaScript `Date`, which has **millisecond** precision; JSON carries that truncated value. So
+a client echoing a message's own `created_at` back as `since` sends a value up to 999µs *earlier*
+than the one stored, and `created_at > $since` matches that message again.
+
+Measured: `11:20:11.01424` came back as `11:20:11.014`.
+
+**Fix — none, deliberately.** Making it exact needs either a compound `(timestamp, id)` cursor in
+every caller, or telling the `pg` driver to return timestamps as strings, which changes the shape of
+every date in the API. The symptom is **one** re-sent message; every client already merges by `id`,
+because a socket push and a poll response can carry the same row anyway.
+
+**The contract this settles, and it is worth stating out loud:** delivery is **at-least-once with a
+dedupe by id**. Exactly-once is not offered and never was. Documented at `findMessages`, which is
+where a reader meets `since`.
+
+**A latent bug is not a harmless one.** This shipped with the HTTP poll and was invisible for as long
+as the client never sent `since` — the first code path to use it found it immediately.
+
+---
+
+## A fixture that silently did nothing — supertest does not mind a 404
+
+**Symptom.** Two tests failed asserting that a message never arrived, pointing at the publish. The
+publish was fine.
+
+**Root cause.** The setup step posted to `/api/bookings/:id/accept` and `/decline`, which do not
+exist — the real route is `POST /:id/actions` with the action in the body. Supertest treats a 404 as
+an ordinary response, so the transition quietly never happened and the failure surfaced three lines
+later, describing the wrong thing.
+
+**Fix.** Fixture helpers that **throw on an unexpected status**, the same convention
+`helpers/factories.js` already uses for sign-in (*"a loud failure in setup beats a misleading
+assertion later"*).
+
+**The general rule:** any test setup step that goes through HTTP needs its status asserted. A test
+asserting an *absence* is the worst place to skip it — the setup failing and the behaviour working
+produce identical output.
+
+---
+
+## Turning on `connectionStateRecovery` would skip authentication
+
+**Symptom.** None — recorded before it happens.
+
+**Root cause.** Socket.IO's `connectionStateRecovery` restores a briefly-dropped connection's rooms
+and replays its missed packets. On a **successful** recovery it does **not** run the middleware
+chain, so the handshake authentication never re-runs: a user suspended during the gap comes back with
+their rooms intact and keeps receiving messages.
+
+**Fix.** It stays off, and the reason is written at the option itself so nobody enables it as a
+performance tweak. Catching up is done from the database instead, by a client that asks for what it
+missed (`thread:join` with `since`) — which is authorized like any other event.
+
+---
+
 ## EXIF was never stripped — a parameter that reads right and does something else
 
 **Symptom.** None. Nothing failed, no test went red, and the images the app displays were clean.

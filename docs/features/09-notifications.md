@@ -85,8 +85,28 @@ executed query in the product — and deriving it from `GET /notifications` woul
 to call `.length` on them. Served by a **partial** index (`WHERE read_at IS NULL`), which stays
 small permanently while a full index would grow with every notification ever sent.
 
-**Polled, not pushed.** There is no websocket in this product, and adding one for a number that
-changes a few times a day would be a second transport to operate, secure and reconnect.
+**Pushed now, with the 60-second poll kept as a fallback.** This said *"there is no websocket in
+this product, and adding one for a number that changes a few times a day would be a second transport
+to operate"* — right until the message thread grew one. The transport now exists and is already
+authenticated, so the bell is one listener on it rather than anything new to run
+([12 — Realtime](12-realtime.md)).
+
+**It was the larger of the two polling costs, which is why it was worth moving.** The thread only
+polls while somebody has a conversation open; this polled for every signed-in user, on every page,
+for as long as a tab was open.
+
+**The count is refetched on a push rather than carried in it.** The server could send the new total,
+but it would have to count to do so — on every notification, for a badge most recipients are not
+looking at. One request per real event still beats one per minute per user by a wide margin, and it
+keeps the number coming from the one endpoint that owns it.
+
+**The poll stays at its original interval**, because it is what covers a socket that never connects
+at all — behind a proxy that refuses to upgrade, a minute of staleness is exactly what this screen
+did before, rather than a badge that never moves. The bell also refetches on **reconnect**: anything
+pushed while the socket was down reached nobody.
+
+**Pushed from `notify()`, the one choke point every notification type passes through**, so all seven
+types are covered without wiring of their own — and so is the eighth, whenever it is added.
 
 The bell fetches the **list** only when opened. Nobody reads a list they have not asked to see.
 
