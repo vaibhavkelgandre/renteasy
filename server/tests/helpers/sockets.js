@@ -18,45 +18,13 @@
  */
 
 import { createServer } from "node:http";
-import request from "supertest";
 import { io as createClient } from "socket.io-client";
 import { app } from "../../src/app.js";
 import { createSocketServer, SOCKET_PATH } from "../../src/ws/socketServer.js";
 import { connectedUserIds, resetRegistry } from "../../src/ws/connectionRegistry.js";
-import { TEST_PASSWORD } from "./factories.js";
 
 /** Generous: a loopback handshake is milliseconds, so anything near this is a hang. */
 const CONNECT_TIMEOUT_MS = 5_000;
-
-/**
- * Signs in and returns the raw session cookie, formatted for a `Cookie` header.
- *
- * WHY NOT REUSE THE FIXTURES' SUPERTEST AGENT: an agent keeps its cookies in a jar
- * built for its own requests, and a socket client needs the header value itself. A
- * second sign-in is cheaper than reaching into another library's internals, and it
- * leaves `helpers/factories.js` — which fifteen other test files depend on —
- * untouched.
- *
- * @param {string} email
- * @param {string} [password]
- * @returns {Promise<string>} e.g. `re_session=eyJ...`
- * @throws {Error} If the sign-in failed or set no cookie — a loud failure in setup
- *         beats a misleading "connection refused" three lines later.
- */
-export async function sessionCookieFor(email, password = TEST_PASSWORD) {
-  const response = await request(app).post("/api/auth/login").send({ email, password });
-
-  if (response.status !== 200) {
-    throw new Error(`Fixture sign-in failed (${response.status}): ${response.body?.message}`);
-  }
-
-  const setCookie = response.headers["set-cookie"];
-  if (!setCookie?.length) throw new Error("Sign-in succeeded but set no cookie");
-
-  // Attributes (`Path`, `HttpOnly`, `SameSite`) are instructions to a browser and are
-  // not part of what a client sends back — only `name=value` is.
-  return setCookie.map((cookie) => cookie.split(";")[0]).join("; ");
-}
 
 /**
  * Polls a condition until it holds.

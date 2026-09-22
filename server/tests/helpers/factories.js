@@ -133,3 +133,42 @@ export async function userWithResetToken(app, overrides = {}) {
   await request(app).post("/api/auth/forgot-password").send({ email });
   return { email, password, token: resetTokenFor(email) };
 }
+
+/**
+ * Signs in and returns the raw session cookie, formatted for a `Cookie` header.
+ *
+ * FOR TESTS THAT CANNOT USE AN AGENT. An agent keeps its cookies in a jar built for
+ * its own requests; two kinds of test need the header value itself:
+ *
+ *   - a socket client, because a WebSocket handshake is not a supertest request;
+ *   - anything firing MANY requests at once, which must not share an agent.
+ *
+ * That second case is not a style preference. A supertest agent wraps the app in ONE
+ * `http.Server`, the first request to finish calls `server.close()` on it (see
+ * `supertest/lib/test.js`), and the rest are reset mid-flight — which is exactly how
+ * FR-514's twenty-way concurrency test failed on CI for twelve days while passing on
+ * every developer machine, where all twenty connect before the first reply lands.
+ *
+ * A second sign-in is cheaper than reaching into another library's cookie jar.
+ *
+ * @param {import("express").Express} app
+ * @param {string} email
+ * @param {string} [password]
+ * @returns {Promise<string>} e.g. `re_session=eyJ...`
+ * @throws {Error} If the sign-in failed or set no cookie — a loud failure in setup
+ *         beats a misleading "connection refused" three lines later.
+ */
+export async function sessionCookieFor(app, email, password = TEST_PASSWORD) {
+  const response = await request(app).post("/api/auth/login").send({ email, password });
+
+  if (response.status !== 200) {
+    throw new Error(`Fixture sign-in failed (${response.status}): ${response.body?.message}`);
+  }
+
+  const setCookie = response.headers["set-cookie"];
+  if (!setCookie?.length) throw new Error("Sign-in succeeded but set no cookie");
+
+  // Attributes (`Path`, `HttpOnly`, `SameSite`) are instructions to a browser and are
+  // not part of what a client sends back — only `name=value` is.
+  return setCookie.map((cookie) => cookie.split(";")[0]).join("; ");
+}

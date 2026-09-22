@@ -15,8 +15,8 @@
 import { describe, it, expect, afterEach } from "vitest";
 import request from "supertest";
 import { app } from "../src/app.js";
-import { verifiedUser } from "./helpers/factories.js";
-import { ask, nextEvent, sessionCookieFor, startRealtimeServer } from "./helpers/sockets.js";
+import { sessionCookieFor, verifiedUser } from "./helpers/factories.js";
+import { ask, nextEvent, startRealtimeServer } from "./helpers/sockets.js";
 
 const JPEG = Buffer.from(
   "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a" +
@@ -59,8 +59,8 @@ async function thread() {
     owner,
     renter,
     bookingId: booking.id,
-    ownerCookie: await sessionCookieFor(owner.email),
-    renterCookie: await sessionCookieFor(renter.email),
+    ownerCookie: await sessionCookieFor(app, owner.email),
+    renterCookie: await sessionCookieFor(app, renter.email),
   };
 }
 
@@ -126,7 +126,7 @@ describe("thread:join", () => {
     const { bookingId } = await thread();
 
     const stranger = await verifiedUser(app);
-    const socket = await realtime.connect(await sessionCookieFor(stranger.email));
+    const socket = await realtime.connect(await sessionCookieFor(app, stranger.email));
 
     const reply = await ask(socket, "thread:join", { bookingId });
 
@@ -270,7 +270,7 @@ describe("message:send authorization", () => {
     const { bookingId } = await thread();
 
     const stranger = await verifiedUser(app);
-    const socket = await realtime.connect(await sessionCookieFor(stranger.email));
+    const socket = await realtime.connect(await sessionCookieFor(app, stranger.email));
 
     const reply = await ask(socket, "message:send", { bookingId, body: "Hello?" });
 
@@ -283,7 +283,7 @@ describe("message:send authorization", () => {
     const { bookingId, renter, ownerCookie } = await thread();
 
     const stranger = await verifiedUser(app);
-    const strangerSocket = await realtime.connect(await sessionCookieFor(stranger.email));
+    const strangerSocket = await realtime.connect(await sessionCookieFor(app, stranger.email));
     await ask(strangerSocket, "thread:join", { bookingId });
 
     let leaked = null;

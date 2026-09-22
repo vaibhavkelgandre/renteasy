@@ -12,10 +12,11 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { createServer } from "node:http";
 import request from "supertest";
 import { app } from "../src/app.js";
 import { query } from "../src/config/db.js";
-import { verifiedUser, unverifiedUser } from "./helpers/factories.js";
+import { sessionCookieFor, verifiedUser, unverifiedUser } from "./helpers/factories.js";
 
 const JPEG = Buffer.from(
   "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a" +
@@ -128,9 +129,42 @@ describe("FR-514 — concurrency produces exactly one confirmed booking", () => 
       requests.push(await requestBooking(renter.agent, listingId));
     }
 
-    const results = await Promise.all(
-      requests.map((booking) => act(owner.agent, booking.id, "ACCEPT"))
-    );
+    // ONE SERVER, HELD OPEN FOR THE WHOLE BURST, addressed by URL rather than through
+    // an agent. This is not tidiness — an agent here made the test fail on CI for
+    // twelve days while passing on every developer machine.
+    //
+    // A supertest agent wraps the app in ONE `http.Server` shared by all its requests.
+    // The first Test to run binds it (`if (!addr) this._server = app.listen(0)`) and
+    // then CLOSES it the moment its own response completes (`server.close(…)`, both in
+    // supertest/lib/test.js) — while the other nineteen are still in flight. Locally
+    // all twenty have connected long before the first reply lands, so nothing shows;
+    // on a two-core runner they have not, and the stragglers are reset mid-connect.
+    // The symptom is a bare `Error: read ECONNRESET` that names nothing.
+    //
+    // Given a URL string, supertest neither creates nor closes a server, so the burst
+    // owns its own lifetime. The three-way parallel tests elsewhere in the suite are
+    // safe either because they use `request(app)` — a server each — or because three
+    // requests always connect in time.
+    const server = createServer(app);
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${server.address().port}`;
+
+    // The session as a header, because there is no agent to keep a cookie jar.
+    const cookie = await sessionCookieFor(app, owner.email);
+
+    let results;
+    try {
+      results = await Promise.all(
+        requests.map((booking) =>
+          request(base)
+            .post(`/api/bookings/${booking.id}/actions`)
+            .set("Cookie", cookie)
+            .send({ action: "ACCEPT" })
+        )
+      );
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
 
     const accepted = results.filter((r) => r.status === 200);
     const refused = results.filter((r) => r.status === 409);

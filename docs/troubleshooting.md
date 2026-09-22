@@ -6,6 +6,64 @@ Newest first.
 
 ---
 
+## CI red for twelve days — a supertest agent closes its server on the first reply
+
+**Symptom.** One test failed on every CI run since 10 September, and passed on every
+developer machine, every time:
+
+```
+FAIL tests/bookings.test.js > FR-514 … > survives twenty simultaneous accepts
+Error: read ECONNRESET
+```
+
+A bare socket error naming nothing. 375 of 376 tests passed; the double-booking guard
+it was testing was working correctly the whole time.
+
+**Root cause.** A supertest **agent** wraps the app in ONE `http.Server` shared by all
+of its requests, and from `supertest/lib/test.js`:
+
+```js
+if (!addr) this._server = app.listen(0);   // the first Test to run binds it…
+…
+return server.close((closeError) => { … })  // …and closes it when ITS request ends
+```
+
+The test fired twenty accepts through one agent with `Promise.all`. The first to
+complete closed the server out from under the other nineteen; any that had not yet
+opened its socket was reset.
+
+**Why only on CI, which is the whole reason it survived twelve days.** On a developer
+machine all twenty connect long before the first reply lands. On a two-core runner
+they do not. The failure is not flaky — it is deterministic on slow hardware and
+impossible on fast hardware, which is the worst combination for noticing.
+
+**Fix.** Bind one server for the burst and address it by URL:
+
+```js
+const server = createServer(app);
+await new Promise((r) => server.listen(0, "127.0.0.1", r));
+const base = `http://127.0.0.1:${server.address().port}`;
+// request(base).post(…).set("Cookie", await sessionCookieFor(app, owner.email))
+```
+
+Given a string, supertest skips server handling entirely — `this.url = typeof app ===
+'string' ? app + path : this.serverAddress(app, path)` — so nothing can close it.
+`sessionCookieFor` moved into `helpers/factories.js` for this, since there is no agent
+to keep a cookie jar.
+
+**The rule worth keeping: never fire a large parallel burst through one supertest
+agent.** Use `request(app)` (a server each) or one explicitly-owned server addressed by
+URL. The suite's other parallel tests are safe for one of those two reasons — three
+requests through an agent, or `request(app)` per request — which is exactly why this
+was the only one that failed.
+
+**And the meta-lesson.** `docs/1.status.md` claimed "CI green" throughout. Eleven red
+runs went unnoticed because the badge was never read and the tracker was trusted
+instead. A status line that is not derived from anything will eventually describe a
+world that stopped existing.
+
+---
+
 ## Socket.IO connects but is not a WebSocket — a proxy rule that forwards everything except the upgrade
 
 **Symptom.** Messaging works. Nothing errors, no test fails, the browser shows a

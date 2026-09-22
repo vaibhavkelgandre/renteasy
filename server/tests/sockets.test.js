@@ -14,8 +14,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { app } from "../src/app.js";
 import { query } from "../src/config/db.js";
 import { env } from "../src/config/env.js";
-import { verifiedUser } from "./helpers/factories.js";
-import { sessionCookieFor, startRealtimeServer, waitFor } from "./helpers/sockets.js";
+import { sessionCookieFor, verifiedUser } from "./helpers/factories.js";
+import { startRealtimeServer, waitFor } from "./helpers/sockets.js";
 import { isOnline, userRoom } from "../src/ws/connectionRegistry.js";
 import { revalidateConnections } from "../src/ws/socketServer.js";
 
@@ -37,7 +37,7 @@ afterEach(async () => {
 /** A signed-in account plus the raw cookie a socket client needs. */
 async function connectableUser() {
   const { email, user } = await verifiedUser(app);
-  return { user, cookie: await sessionCookieFor(email), email };
+  return { user, cookie: await sessionCookieFor(app, email), email };
 }
 
 describe("the handshake", () => {
