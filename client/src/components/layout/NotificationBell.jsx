@@ -1,10 +1,21 @@
 /**
  * The header bell and its dropdown — FR-986.
  *
- * POLLED, NOT PUSHED. There is no websocket anywhere in this product and adding one
- * for a badge would be a second transport to operate, secure and reconnect for a
- * number that changes a handful of times a day. A 60-second poll of a single integer,
- * served by a partial index, is the cheaper answer by a wide margin.
+ * PUSHED, WITH THE 60-SECOND POLL KEPT AS A FALLBACK. This used to say "there is no
+ * websocket anywhere in this product, and adding one for a badge would be a second
+ * transport to operate". That was right until the thread grew one; now the transport
+ * already exists and is already authenticated, so this is one listener on it rather
+ * than anything new to run.
+ *
+ * IT WAS THE LARGER OF THE TWO POLLING COSTS, which is why it was worth moving. The
+ * thread only polls while somebody has a conversation open; this polled for every
+ * signed-in user, on every page, for a number that changes a handful of times a day.
+ *
+ * THE COUNT IS REFETCHED ON A PUSH RATHER THAN CARRIED IN IT. The server could send
+ * the new total, but it would have to count to do so — on every notification, for a
+ * number most recipients are not looking at. One request per real event is still
+ * enormously cheaper than one per minute per user, and it keeps the count coming from
+ * the one endpoint that owns it.
  *
  * The count comes from its OWN endpoint rather than from the list. The list is paged
  * and unbounded by time; deriving "how many unread" from it would mean fetching rows
@@ -14,6 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../lib/api.js";
+import { getSocket } from "../../lib/socket.js";
 import { formatWhen } from "../../lib/dates.js";
 
 /**
@@ -46,8 +58,26 @@ export function NotificationBell() {
 
   useEffect(() => {
     refreshCount();
+
+    const socket = getSocket();
+    socket.on("notification:new", refreshCount);
+
+    // RECONNECTING IS ALSO A REASON TO REFETCH, and it is easy to leave out: anything
+    // that arrived while the socket was down was pushed to nobody, so without this
+    // the badge stays stale until the poll below happens to catch it.
+    socket.on("connect", refreshCount);
+
+    // THE POLL STAYS, at its original interval. It is no longer how the badge keeps
+    // up — that is the push — but it is what covers a socket that never connects at
+    // all, behind a proxy that refuses to upgrade. A minute of staleness in that case
+    // is exactly what this screen did before, rather than a badge that never moves.
     const timer = setInterval(refreshCount, POLL_MS);
-    return () => clearInterval(timer);
+
+    return () => {
+      socket.off("notification:new", refreshCount);
+      socket.off("connect", refreshCount);
+      clearInterval(timer);
+    };
   }, [refreshCount]);
 
   // Close on a click outside or on Escape. Both, because a dropdown that only closes

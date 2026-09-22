@@ -5,6 +5,16 @@
 import { afterEach, expect, vi } from "vitest";
 import { cleanup, configure } from "@testing-library/react";
 import * as matchers from "@testing-library/jest-dom/matchers";
+import { resetRealtime } from "./socketMock.js";
+
+// The socket, replaced everywhere. The notification bell is in the layout, so every
+// test that renders the app reaches `lib/socket.js` — and left real, each one opens a
+// connection from jsdom that fails and then retries for the rest of the run.
+//
+// Mocked HERE rather than per file for that reason: it is not a messaging concern any
+// more. `src/tests/socketMock.js` explains what it does and how a test opts into the
+// connected path.
+vi.mock("../lib/socket.js", async () => await import("./socketMock.js"));
 
 // Adds toBeInTheDocument, toBeDisabled, toHaveAttribute and friends.
 expect.extend(matchers);
@@ -16,6 +26,10 @@ afterEach(() => {
   cleanup();
   // Reset fetch stubs between tests for the same reason.
   vi.restoreAllMocks();
+  // And the socket's own state, which `restoreAllMocks` cannot reach — it is an
+  // ordinary module, not a spy. A listener or a `connected` left set would make the
+  // next test pass or fail for a reason belonging to this one.
+  resetRealtime();
 });
 
 configure({

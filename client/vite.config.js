@@ -42,7 +42,20 @@ export default defineConfig({
     // use" - a failure you can act on in five seconds.
     strictPort: true,
 
-    proxy: { "/api": { target: "http://localhost:5001", changeOrigin: false } },
+    // `ws: true` IS NOT OPTIONAL ONCE ANYTHING USES A SOCKET, and its absence fails in
+    // the most misleading way available. The socket handshake lives at
+    // `/api/socket.io`, so this rule already forwards it — but a plain HTTP proxy does
+    // not forward the `Upgrade` request that turns the connection into a WebSocket.
+    // Socket.IO would then connect over its HTTP long-polling fallback and stay there
+    // permanently: messaging works, nothing errors, and the thing you built is simply
+    // not running. Nginx needs the equivalent (`proxy_set_header Upgrade`) in
+    // production for the same reason.
+    //
+    // `changeOrigin` stays false, and that matters more than it did before. It leaves
+    // the `Origin` header as this dev server's own address, which is what the API's
+    // socket allowlist compares against APP_URL. Turning it on would rewrite the
+    // origin to the API's address and every handshake would be refused.
+    proxy: { "/api": { target: "http://localhost:5001", changeOrigin: false, ws: true } },
   },
 
   test: {

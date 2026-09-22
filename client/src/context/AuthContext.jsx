@@ -12,6 +12,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
+import { closeSocket } from "../lib/socket.js";
 
 const AuthContext = createContext(null);
 
@@ -80,6 +81,13 @@ export function AuthProvider({ children }) {
     try {
       await api.post("/auth/logout");
     } finally {
+      // IN THE SAME `finally` AS CLEARING THE USER, because signing out has to mean
+      // both. The cookie is gone, but an already-established socket does not
+      // re-authenticate — it would stay open, in its rooms, still receiving this
+      // person's messages, on a machine they have just signed out of. Closing it also
+      // makes the next sign-in build a fresh connection rather than inherit one that
+      // authenticated as somebody else.
+      closeSocket();
       setUser(null);
     }
   }

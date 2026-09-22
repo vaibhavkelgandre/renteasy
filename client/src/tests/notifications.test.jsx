@@ -13,6 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { AuthProvider } from "../context/AuthContext.jsx";
 import { App } from "../App.jsx";
+import { push } from "./socketMock.js";
 
 const USER = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -96,6 +97,52 @@ function renderApp(path, routes = {}) {
 
 describe("the bell", () => {
   beforeEach(() => vi.restoreAllMocks());
+
+  it("refreshes its badge when a notification is pushed", async () => {
+    let unread = 0;
+
+    // A live count, so the assertion is that the bell asked again — not that it was
+    // handed a number in the push. It deliberately is not: the server would have to
+    // count on every notification, for a badge most recipients are not looking at.
+    const calls = renderApp("/", {
+      "/notifications/unread-count": {
+        get body() {
+          return { success: true, message: "OK", data: { unread } };
+        },
+      },
+    });
+
+    await screen.findByRole("button", { name: /^notifications$/i });
+    const before = calls.filter((c) => c.url.includes("unread-count")).length;
+
+    unread = 1;
+    push("notification:new", { notification: { id: "n1", type: "BOOKING_MESSAGE" } });
+
+    expect(await screen.findByRole("button", { name: /1 unread/i })).toBeInTheDocument();
+    expect(calls.filter((c) => c.url.includes("unread-count")).length).toBeGreaterThan(before);
+  });
+
+  it("refetches on reconnect, because anything sent while it was down reached nobody", async () => {
+    let unread = 0;
+
+    renderApp("/", {
+      "/notifications/unread-count": {
+        get body() {
+          return { success: true, message: "OK", data: { unread } };
+        },
+      },
+    });
+
+    await screen.findByRole("button", { name: /^notifications$/i });
+
+    // A push is delivered to whoever is connected AT THE TIME. Without this the
+    // badge would stay stale from the moment the socket dropped until the fallback
+    // poll happened to catch it a minute later.
+    unread = 4;
+    push("connect", undefined);
+
+    expect(await screen.findByRole("button", { name: /4 unread/i })).toBeInTheDocument();
+  });
 
   it("reads its badge from the count endpoint, never from the list", async () => {
     const calls = renderApp("/", { "/notifications/unread-count": count(3) });

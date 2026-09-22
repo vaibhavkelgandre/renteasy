@@ -13,6 +13,11 @@ import { MemoryRouter } from "react-router-dom";
 import { AuthProvider } from "../context/AuthContext.jsx";
 import { App } from "../App.jsx";
 
+// `lib/socket.js` is mocked globally in `setup.js` — see `socketMock.js` for why it
+// is not per file. These are the controls; it defaults to disconnected, so every test
+// below that does not opt in is exercising the polling fallback.
+import { push, realtime } from "./socketMock.js";
+
 const ME = "11111111-1111-4111-8111-111111111111";
 const THEM = "44444444-4444-4444-8444-444444444444";
 const BOOKING = "22222222-2222-4222-8222-222222222222";
@@ -270,5 +275,229 @@ describe("a thread", () => {
     });
 
     expect(await screen.findByText("Booking accepted.")).toBeInTheDocument();
+  });
+});
+
+describe("a thread over the socket", () => {
+  /** Makes the faked socket connected and answering. */
+  function connected(reply = () => ({ messages: [], canSend: true })) {
+    realtime.connected = true;
+    realtime.reply = reply;
+  }
+
+  it("renders a pushed message without asking for it", async () => {
+    connected();
+
+    renderApp(`/messages/${BOOKING}`, {
+      [`/bookings/${BOOKING}`]: BOOKING_RESPONSE,
+      [`/bookings/${BOOKING}/messages`]: messages([]),
+    });
+
+    await screen.findByRole("button", { name: /^send$/i });
+
+    push("message:new", { bookingId: BOOKING, message: message({ body: "Pushed, not polled." }) });
+
+    expect(screen.getByText("Pushed, not polled.")).toBeInTheDocument();
+  });
+
+  it("ignores a push belonging to a different conversation", async () => {
+    connected();
+
+    renderApp(`/messages/${BOOKING}`, {
+      [`/bookings/${BOOKING}`]: BOOKING_RESPONSE,
+      [`/bookings/${BOOKING}/messages`]: messages([]),
+    });
+
+    await screen.findByRole("button", { name: /^send$/i });
+
+    // One socket serves the whole app, so every subscribed thread's messages arrive
+    // at every listener. Without the booking id check, opening two conversations
+    // would show each of them the other's messages.
+    push("message:new", {
+      bookingId: "99999999-9999-4999-8999-999999999999",
+      message: message({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", body: "Somebody else's." }),
+    });
+
+    expect(screen.queryByText("Somebody else's.")).not.toBeInTheDocument();
+  });
+
+  it("shows a pushed message only once, even though the sender also gets its acknowledgement", async () => {
+    const sent = message({ id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", body: "On my way", sender_id: ME });
+    connected((event) => (event === "message:send" ? { message: sent } : { messages: [], canSend: true }));
+
+    renderApp(`/messages/${BOOKING}`, {
+      [`/bookings/${BOOKING}`]: BOOKING_RESPONSE,
+      [`/bookings/${BOOKING}/messages`]: messages([]),
+    });
+
+    await screen.findByRole("button", { name: /^send$/i });
+    await userEvent.type(screen.getByLabelText(/write a message/i), "On my way");
+    await userEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    // The sender is in the room too, so the broadcast reaches them as well as the
+    // acknowledgement. Merging by id is what keeps that from drawing the message
+    // twice — and it is the same rule that lets a poll and a push overlap.
+    await screen.findByText("On my way");
+    push("message:new", { bookingId: BOOKING, message: sent });
+
+    expect(screen.getAllByText("On my way")).toHaveLength(1);
+  });
+
+  it("sends over the socket rather than over HTTP while connected", async () => {
+    connected((event) =>
+      event === "message:send"
+        ? { message: message({ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", body: "Eight works." }) }
+        : { messages: [], canSend: true }
+    );
+
+    const calls = renderApp(`/messages/${BOOKING}`, {
+      [`/bookings/${BOOKING}`]: BOOKING_RESPONSE,
+      [`/bookings/${BOOKING}/messages`]: messages([]),
+    });
+
+    await screen.findByRole("button", { name: /^send$/i });
+    await userEvent.type(screen.getByLabelText(/write a message/i), "Eight works.");
+    await userEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    await waitFor(() =>
+      expect(realtime.requests.some((sent) => sent.event === "message:send")).toBe(true)
+    );
+
+    // Both transports reach the same service function on the server, so this is about
+    // not paying for a whole HTTP request when a connection is already open — not
+    // about the two doing different things. The plain-HTTP send is still covered by
+    // "sends on submit" above, which runs with the socket unavailable.
+    expect(calls.some((call) => call.method === "POST" && call.url.includes("/messages"))).toBe(
+      false
+    );
+  });
+});
+
+describe("typing, presence and read receipts", () => {
+  const OTHER_PARTY = { id: THEM, online: true, lastSeenAt: null, readAt: null };
+
+  /** Connected, joined, and told who the other party is. */
+  function joined(otherParty = OTHER_PARTY, messageList = []) {
+    realtime.connected = true;
+    realtime.reply = () => ({ messages: messageList, canSend: true, otherParty });
+  }
+
+  async function openThread(messageList = []) {
+    renderApp(`/messages/${BOOKING}`, {
+      [`/bookings/${BOOKING}`]: BOOKING_RESPONSE,
+      [`/bookings/${BOOKING}/messages`]: messages(messageList),
+    });
+    await screen.findByRole("button", { name: /^send$/i });
+  }
+
+  it("shows the other party as online, and as last seen once they leave", async () => {
+    joined();
+    await openThread();
+
+    expect(await screen.findByText("Online")).toBeInTheDocument();
+
+    push("presence:changed", {
+      bookingId: BOOKING,
+      userId: THEM,
+      online: false,
+      lastSeenAt: "2026-10-01T10:00:00Z",
+    });
+
+    // "Offline" alone says nothing a reader can act on — the question is whether it
+    // is worth waiting for a reply, and only a time answers that.
+    expect(screen.queryByText("Online")).not.toBeInTheDocument();
+    expect(screen.getByText(/last seen/i)).toBeInTheDocument();
+  });
+
+  it("ignores presence for somebody who is not the other party", async () => {
+    joined();
+    await openThread();
+
+    await screen.findByText("Online");
+
+    push("presence:changed", {
+      bookingId: BOOKING,
+      userId: "77777777-7777-4777-8777-777777777777",
+      online: false,
+      lastSeenAt: "2026-10-01T10:00:00Z",
+    });
+
+    // One socket serves the whole app. Without the id check, anybody's departure
+    // would mark this conversation's counterpart as gone.
+    expect(screen.getByText("Online")).toBeInTheDocument();
+  });
+
+  it("shows who is typing, and stops when they stop", async () => {
+    joined();
+    await openThread();
+
+    push("thread:typing", { bookingId: BOOKING, userId: THEM, name: "Rohan Mehta", isTyping: true });
+    expect(await screen.findByText(/rohan mehta is typing/i)).toBeInTheDocument();
+
+    push("thread:typing", { bookingId: BOOKING, userId: THEM, name: "Rohan Mehta", isTyping: false });
+    expect(screen.queryByText(/is typing/i)).not.toBeInTheDocument();
+  });
+
+  it("clears a typing indicator if the socket drops mid-word", async () => {
+    joined();
+    await openThread();
+
+    push("thread:typing", { bookingId: BOOKING, userId: THEM, name: "Rohan Mehta", isTyping: true });
+    await screen.findByText(/is typing/i);
+
+    push("disconnect", undefined);
+
+    // The sender's "stopped" can never arrive over a socket that is gone, so without
+    // this the indicator sits there claiming somebody is about to reply.
+    expect(screen.queryByText(/is typing/i)).not.toBeInTheDocument();
+  });
+
+  it("announces typing once per burst, not once per keystroke", async () => {
+    joined();
+    await openThread();
+
+    await userEvent.type(screen.getByLabelText(/write a message/i), "Hello there");
+
+    const typing = realtime.emitted.filter((sent) => sent.event === "thread:typing");
+
+    // Eleven keystrokes, one announcement. Emitting per keystroke is the obvious
+    // implementation and the reason the server needed a rate limit at all.
+    expect(typing).toHaveLength(1);
+    expect(typing[0].payload).toMatchObject({ bookingId: BOOKING, isTyping: true });
+  });
+
+  it("marks the thread read on open, and shows when the other party has read ours", async () => {
+    const mine = message({
+      id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      sender_id: ME,
+      body: "Can I collect at eight?",
+      created_at: "2026-10-01T10:00:00Z",
+    });
+
+    joined(OTHER_PARTY, [mine]);
+    await openThread([mine]);
+
+    await waitFor(() =>
+      expect(realtime.requests.some((sent) => sent.event === "thread:read")).toBe(true)
+    );
+
+    expect(screen.queryByText("Read")).not.toBeInTheDocument();
+
+    push("thread:read", { bookingId: BOOKING, userId: THEM, readAt: "2026-10-01T10:05:00Z" });
+
+    expect(screen.getByText("Read")).toBeInTheDocument();
+  });
+
+  it("does not mark a thread read while the tab is hidden", async () => {
+    joined(OTHER_PARTY, [message()]);
+
+    // The bug this prevents predates the socket: the 3-second poll marked a thread
+    // read on every pass, so a conversation left open in a background tab reported
+    // as read by somebody who was not there.
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+
+    await openThread([message()]);
+
+    expect(realtime.requests.some((sent) => sent.event === "thread:read")).toBe(false);
   });
 });
