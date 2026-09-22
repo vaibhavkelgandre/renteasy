@@ -109,3 +109,33 @@ export function validateParams(schema, notFoundMessage = "Not found") {
     next();
   };
 }
+
+/**
+ * Validates a payload that did not arrive as an HTTP request.
+ *
+ * FOR THE SOCKET TRANSPORT, which has no `req` to hang a middleware chain off — so
+ * the three functions above cannot be used, while the rule they enforce still must
+ * be. NFR-6 is about every write validating server-side, not about Express.
+ *
+ * THE CALLER SUPPLIES THE ERROR, rather than this deciding, because the 400-versus-404
+ * split above is a decision per field and not per transport: an opaque id that is the
+ * wrong shape must answer exactly what an absent one answers (see `validateParams`),
+ * while a message body is genuinely the user's input and wants a 400 with the field
+ * named. A socket handler therefore calls this twice with two schemas, mirroring the
+ * two middlewares a route composes — one for the id, one for the body.
+ *
+ * @param {import("zod").ZodTypeAny} schema
+ * @param {unknown} payload Whatever the client emitted. Assume nothing about it: a
+ *        socket event can carry `undefined`, a string, or an array just as easily as
+ *        the object the handler expects.
+ * @param {(errors: Record<string, string>) => Error} toError Receives the same
+ *        flattened `{ field: message }` map the HTTP middleware would have returned.
+ * @returns {object} The parsed value — unknown keys stripped and transforms applied,
+ *          exactly as `validateBody` replaces `req.body`.
+ * @throws {Error} Whatever `toError` returns.
+ */
+export function validatePayload(schema, payload, toError) {
+  const result = schema.safeParse(payload);
+  if (!result.success) throw toError(flatten(result.error));
+  return result.data;
+}

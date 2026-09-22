@@ -20,6 +20,7 @@ import {
   markAllNotificationsRead,
 } from "../repositories/notificationRepository.js";
 import { countUnreadInThread } from "../repositories/messageRepository.js";
+import { publishNotification } from "../ws/socketPublisher.js";
 import { notFound } from "../utils/errors.js";
 
 /**
@@ -106,7 +107,17 @@ export const BOOKING_NOTIFICATIONS = {
  */
 async function notify(input) {
   try {
-    await insertNotification(input);
+    const notification = await insertNotification(input);
+
+    // PUSHED FROM THE ONE CHOKE POINT, so every notification type — the seven that
+    // exist and any added later — reaches the bell without wiring of its own. That
+    // is the whole reason this helper was worth having.
+    //
+    // INSIDE the `try` deliberately, even though it never throws: it is part of the
+    // same "best effort" this function already promises, and putting it outside would
+    // suggest it has a stronger guarantee than the write it follows.
+    publishNotification(input.userId, notification);
+
     return true;
   } catch (error) {
     console.error(`[notify] ${input.type} for ${input.userId} failed: ${error.message}`);

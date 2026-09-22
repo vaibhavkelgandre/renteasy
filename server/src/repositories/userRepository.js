@@ -295,3 +295,57 @@ export async function findPublicProfileById(id) {
   );
   return rows[0] ?? null;
 }
+
+/**
+ * Stamps when the user's last socket disconnected — migration 012.
+ *
+ * Called from the socket layer's disconnect handler, and only when the LAST of a
+ * user's connections goes: see ws/socketServer.js.
+ *
+ * NO `updated_at` TOUCH, unlike every other update in this file, and that is
+ * deliberate. `updated_at` means "when did this account's own details change", and
+ * closing a browser tab is not a change to the account — bumping it would make every
+ * user look edited every time they went offline, destroying the one column anything
+ * auditing profile changes would read.
+ *
+ * NO `status = 'ACTIVE'` GUARD either, for the same reason it returns nothing: this
+ * records a fact about a connection that has already happened. A user suspended while
+ * connected still disconnected, and refusing to record it would leave their last-seen
+ * frozen at whenever they were last permitted.
+ *
+ * @param {string} id Must already be shape-checked as a UUID.
+ * @returns {Promise<void>} Nothing. No caller can act on whether a row matched — a
+ *          deleted account is a legitimate outcome of a race between a disconnect and
+ *          a deletion, not an error.
+ * @throws {Error} On a database failure. The caller swallows it, because losing a
+ *         last-seen stamp must never take down a disconnect handler.
+ */
+export async function updateLastSeenAt(id) {
+  await query(`UPDATE users SET last_seen_at = now() WHERE id = $1`, [id]);
+}
+
+/**
+ * Just enough about somebody to say whether they are around — migration 012.
+ *
+ * A TINY PROJECTION RATHER THAN `findUserById`, for the same reason
+ * `findPublicProfileById` is one: this is read about the OTHER party to a booking, so
+ * every column it selects is a column that could be leaked to them. `findUserById`
+ * would hand the caller that person's email and phone on the way to fetching one
+ * timestamp, and the only reliable way not to leak them is never to select them.
+ *
+ * `last_seen_at` is deliberately absent from `PUBLIC_COLUMNS` for the same reason.
+ *
+ * @param {string} id Must already be shape-checked as a UUID.
+ * @returns {Promise<{ id: string, last_seen_at: Date | null } | null>} Null for an
+ *          account that is not ACTIVE — somebody who is no longer on the platform is
+ *          not "offline", they are absent, and a last-seen date for them says nothing
+ *          useful and discloses when they left.
+ * @throws {Error} On a database failure.
+ */
+export async function findPresenceById(id) {
+  const { rows } = await query(
+    `SELECT id, last_seen_at FROM users WHERE id = $1 AND status = 'ACTIVE'`,
+    [id]
+  );
+  return rows[0] ?? null;
+}

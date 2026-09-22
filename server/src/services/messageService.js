@@ -24,6 +24,7 @@ import { loadBookingForParty } from "./bookingAccess.js";
 import { canMessage, roleInBooking, CHAT_GRACE_DAYS } from "./bookingStateMachine.js";
 import { uploadPrivateAsset, fetchPrivateAsset } from "../config/cloudinary.js";
 import { notifyNewMessage } from "./notificationService.js";
+import { publishMessage } from "../ws/socketPublisher.js";
 import { badRequest, conflict, notFound } from "../utils/errors.js";
 
 /** Long enough for a real message, short enough that nobody pastes an essay. */
@@ -55,6 +56,23 @@ function assertThreadIsOpen(booking) {
 }
 
 /**
+ * The party who is not the actor.
+ *
+ * Extracted once it had a third caller. A booking names exactly two people, so "the
+ * other one" is a single expression — but it was written out twice for the two
+ * notification recipients, and a thread's counterparty is now also who presence and
+ * read receipts are about. Three copies of a ternary is three places to get the sides
+ * the wrong way round.
+ *
+ * @param {object} booking
+ * @param {object} actor
+ * @returns {string} The other party's user id.
+ */
+function counterpartyOf(booking, actor) {
+  return roleInBooking(booking, actor) === "owner" ? booking.renter_id : booking.owner_id;
+}
+
+/**
  * The thread, and whether the caller may add to it.
  *
  * MARKS THE THREAD READ AS A SIDE EFFECT of fetching it, which is the honest
@@ -64,7 +82,9 @@ function assertThreadIsOpen(booking) {
  * @param {string} bookingId
  * @param {object} actor
  * @param {object} [window] `{ since, before, limit }`.
- * @returns {Promise<{ messages: object[], canSend: boolean, closedReason: string|null }>}
+ * @returns {Promise<{ messages: object[], canSend: boolean, bookingStatus: string,
+ *          otherPartyId: string }>} (`closedReason` was named here and never
+ *          returned; `canSend` plus `bookingStatus` is what callers actually read.)
  * @throws {AppError} 404 for anybody who is not a party.
  */
 export async function listMessages(bookingId, actor, window = {}) {
@@ -80,7 +100,41 @@ export async function listMessages(bookingId, actor, window = {}) {
     messages: messages.map(present),
     canSend: canMessage(booking),
     bookingStatus: booking.status,
+
+    // WHO THE OTHER PARTY IS, so a caller can ask about them — their presence, and
+    // how far they have read. Costs nothing: the booking is already loaded and this
+    // is the same line `sendMessage` uses to pick a notification's recipient.
+    //
+    // An ID AND NOTHING ELSE, deliberately. Their name is already on the page that
+    // renders this, and a service handing out more of somebody than the caller asked
+    // for is how a projection stops being one.
+    otherPartyId: counterpartyOf(booking, actor),
   };
+}
+
+/**
+ * Records that the caller has read a thread up to now.
+ *
+ * ITS OWN ENTRY POINT BECAUSE READING IS NO LONGER IMPLIED BY FETCHING. While the
+ * only way to see a message was to poll for it, `listMessages` marking the thread
+ * read was exactly right — asking for the thread WAS opening it. A pushed message
+ * arrives without anyone asking for anything, so "I have seen this" became a separate
+ * statement the client has to make.
+ *
+ * @param {string} bookingId
+ * @param {object} actor
+ * @returns {Promise<{ bookingId: string, userId: string }>} Echoed back so the caller
+ *          can broadcast it without re-deriving who it was about.
+ * @throws {AppError} 404 for anybody who is not a party.
+ */
+export async function markThreadAsRead(bookingId, actor) {
+  // Authorized like everything else here, and not skipped because it "only" writes a
+  // timestamp: without it, anybody could move a stranger's read watermark and quietly
+  // clear their unread badge.
+  await loadBookingForParty(bookingId, actor);
+  await markThreadRead(bookingId, actor.id);
+
+  return { bookingId, userId: actor.id };
 }
 
 /**
@@ -131,10 +185,22 @@ export async function sendMessage(bookingId, actor, { body, file } = {}) {
   // badge on your own thread.
   await markThreadRead(bookingId, actor.id);
 
-  const recipientId = roleInBooking(booking, actor) === "owner" ? booking.renter_id : booking.owner_id;
+  const recipientId = counterpartyOf(booking, actor);
   await notifyNewMessage({ booking, recipientId, senderName: actor.name });
 
-  return present(message);
+  const presented = present(message);
+
+  // THE SECOND SIDE EFFECT, beside the notification above and under the same rule
+  // (NFR-10): the row has already committed, so neither of them may fail this call.
+  // The difference between them is only urgency — a notification is for somebody who
+  // is not looking, this is for somebody who is.
+  //
+  // Published from the SERVICE rather than from either transport, which is the whole
+  // reason both of them get it: this line fires for an HTTP POST and for a socket
+  // `message:send` alike, so the two can never disagree about who was told.
+  publishMessage(bookingId, presented);
+
+  return presented;
 }
 
 /**
@@ -172,10 +238,13 @@ export async function shareContact(bookingId, actor) {
 
   await markThreadRead(bookingId, actor.id);
 
-  const recipientId = roleInBooking(booking, actor) === "owner" ? booking.renter_id : booking.owner_id;
+  const recipientId = counterpartyOf(booking, actor);
   await notifyNewMessage({ booking, recipientId, senderName: actor.name });
 
-  return present(message);
+  const presented = present(message);
+  publishMessage(bookingId, presented);
+
+  return presented;
 }
 
 /**
@@ -214,7 +283,13 @@ export const SYSTEM_LINES = {
  */
 export async function postSystemMessage(bookingId, text) {
   try {
-    await insertMessage({ bookingId, senderId: null, kind: "SYSTEM", body: text });
+    const message = await insertMessage({ bookingId, senderId: null, kind: "SYSTEM", body: text });
+
+    // Published like any other message, so "Booking accepted." appears in an open
+    // thread the moment the owner accepts. It still never NOTIFIES — the transition
+    // sent its own notification, and a second one for the same event is noise. A push
+    // to a thread somebody is already looking at is not a second notification.
+    publishMessage(bookingId, present(message));
   } catch (error) {
     console.error(`[messages] system line for ${bookingId} failed: ${error.message}`);
   }

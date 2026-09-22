@@ -66,6 +66,21 @@ export async function insertMessage({ bookingId, senderId, kind, body = null, at
  * Oldest-first within the page, because a chat reads downwards and reversing it in
  * the client is a step that can be forgotten in one of the two callers.
  *
+ * `since` IS EFFECTIVELY INCLUSIVE AT ITS BOUNDARY, despite the `>` below, and a
+ * caller has to expect it. Postgres keeps microseconds, the `pg` driver hands back a
+ * millisecond-precision JS `Date`, and JSON carries that truncated value — so a client
+ * echoing a message's own `created_at` back as `since` sends a value up to 999µs
+ * EARLIER than the one stored, and that message matches `>` again. Measured, not
+ * assumed: `11:20:11.01424` came back as `11:20:11.014`.
+ *
+ * Left as it is rather than fixed, because the fix is worse than the symptom. Making
+ * it exact would mean either a compound (timestamp, id) cursor in every caller, or
+ * telling the `pg` driver to return timestamps as strings — which changes the shape of
+ * every date in the whole API. The symptom is that a reconnecting client re-receives
+ * ONE message it already has, and every client already merges by `id` because a socket
+ * push and a poll response can overlap anyway. At-least-once with a dedupe by id is
+ * the contract; exactly-once is not, and never was.
+ *
  * @param {string} bookingId
  * @param {object} [window]
  * @param {Date|null} [window.since]
@@ -133,6 +148,28 @@ export async function markThreadRead(bookingId, userId) {
      DO UPDATE SET last_read_at = GREATEST(booking_message_reads.last_read_at, EXCLUDED.last_read_at)`,
     [bookingId, userId]
   );
+}
+
+/**
+ * How far through a thread one party has read.
+ *
+ * The same watermark `markThreadRead` moves, read back so the OTHER party can be
+ * shown which of their messages have been seen. `countUnreadMessages` answers the
+ * mirror-image question — "how much have I not seen" — and cannot serve this one,
+ * because a read receipt is about somebody else's progress through your messages.
+ *
+ * @param {string} bookingId
+ * @param {string} userId Whose progress to report.
+ * @returns {Promise<Date | null>} Null when they have never opened the thread, which
+ *          is a real answer and not a missing one — it means nothing has been read.
+ * @throws {Error} On a database failure.
+ */
+export async function findReadWatermark(bookingId, userId) {
+  const { rows } = await query(
+    `SELECT last_read_at FROM booking_message_reads WHERE booking_id = $1 AND user_id = $2`,
+    [bookingId, userId]
+  );
+  return rows[0]?.last_read_at ?? null;
 }
 
 /**

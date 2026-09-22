@@ -1,0 +1,28 @@
+-- 012 — presence: when a user was last connected
+--
+-- Documented in docs/features/12-realtime.md. Never edit this file once it has been
+-- applied — the migration runner stores a checksum and will refuse to run.
+
+-- WHEN THIS USER'S LAST SOCKET DISCONNECTED.
+--
+-- "Online" is deliberately NOT stored. Being online is the existence of a live
+-- socket in a running process, which is not a fact a row can hold: a column saying
+-- `online = true` survives a crash and then lies until somebody notices, and there
+-- is no moment at which anything would correct it.
+--
+-- This column is the half that DOES outlive the process. Without it presence can
+-- only ever say "online" or say nothing, and "nothing" reads identically to "offline
+-- since a minute ago" — which is the whole difference between waiting for an owner's
+-- reply and giving up and booking something else.
+--
+-- WRITTEN ON DISCONNECT, not on every event. A write per message would make a chatty
+-- thread an amplifier on `users`, and the value is only ever read while the user is
+-- offline — so a stamp that is fresh to the second buys nothing.
+--
+-- DELIBERATELY NOT INDEXED. It is only ever selected for one known user id, which the
+-- primary key already answers; nothing sorts or filters by it.
+--
+-- NULLABLE, and null is a legitimate state that must not be shown as a date: it means
+-- "has never connected since this column existed", which covers every account that
+-- predates this migration.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at timestamptz;

@@ -13,6 +13,7 @@ import { closeDatabase } from "./config/db.js";
 import { describeMailMode } from "./config/mailer.js";
 import { describeMediaMode } from "./config/cloudinary.js";
 import { startScheduler } from "./scheduler.js";
+import { createSocketServer, SOCKET_PATH } from "./ws/socketServer.js";
 
 // Validate BEFORE binding a port. The order matters: a process that fails validation
 // must never reach a state where it accepts a request it cannot serve. Getting this
@@ -46,6 +47,13 @@ const server = app.listen(env.port, () => {
   console.log(`[mail] ${describeMailMode()}`);
   console.log(`[media] ${describeMediaMode()}`);
 
+  // Said at boot for the same reason as the two above, plus one specific to this
+  // transport: a socket handshake is refused when its `Origin` does not match
+  // `env.appUrl`, while HTTP carries on working perfectly — because HTTP does not
+  // check origin. Printing the path next to `links point at:` above puts both halves
+  // of that diagnosis in the same three lines of log.
+  console.log(`[ws] realtime on ${SOCKET_PATH}`);
+
   /**
    * Time-based rules — FR-508 today, FR-603 from step 7.
    *
@@ -68,6 +76,24 @@ const server = app.listen(env.port, () => {
 });
 
 /**
+ * The realtime transport, attached to the server `listen` just returned.
+ *
+ * OUTSIDE the listen callback, unlike the scheduler, and the reason is the opposite of
+ * the one that put the scheduler inside it. `app.listen` binds and returns
+ * synchronously while its callback runs later, so anything in the callback happens
+ * AFTER the event loop is already able to deliver requests — a handshake arriving in
+ * that window would reach Express, which has no route for it, and be answered with a
+ * 404 the client reads as "realtime is not available here". Attaching on this line
+ * runs before any request can be processed at all.
+ *
+ * The boot banner still prints from inside the callback, which is why this line logs
+ * nothing: a log here would come out above the "listening on port" line and read as
+ * though the order of events were backwards — the exact trap the scheduler's comment
+ * above describes.
+ */
+const { close: stopSockets } = createSocketServer(server);
+
+/**
  * Shuts down without dropping in-flight requests.
  *
  * `server.close()` stops accepting NEW connections and waits for current responses to
@@ -84,6 +110,20 @@ async function shutdown(signal) {
   // query against a pool that is about to close, and the error would be the last
   // thing in the log — reading as though the shutdown itself had failed.
   stopScheduler?.();
+
+  // BEFORE `server.close()`, and this ordering is not a preference — it is required.
+  //
+  // `server.close()` stops accepting new connections and then waits for the existing
+  // ones to finish. A WebSocket never finishes: it is a connection deliberately held
+  // open, so it would keep the drain from ever completing and every shutdown would
+  // fall through to the ten-second forced exit below — turning a clean deploy into a
+  // ten-second stall that looks like a hung process.
+  //
+  // Dropping the sockets first also means clients start their reconnect backoff at the
+  // moment of the signal rather than after a timeout, so they are already queued
+  // against the replacement process instead of waiting on a socket that is never
+  // coming back.
+  stopSockets();
 
   server.close(async () => {
     // Close the pool only after the HTTP server has drained - a request still
