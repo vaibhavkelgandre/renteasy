@@ -104,7 +104,17 @@ export function Header() {
     // light one: a solid near-black bar over a near-black page is invisible as an
     // object, so the only thing telling you it is there is the photography sliding
     // under it.
-    <header className="sticky top-0 z-40 border-b border-line bg-canvas/80 backdrop-blur-xl">
+    // `backdrop-blur-md` rather than `-xl`: a sticky, blurred header re-runs the blur
+    // on every scroll frame against whatever is now behind it, and 24px of blur
+    // (`-xl`) over a page full of listing photography was expensive enough to show up
+    // as visible stutter — reported as the header "wobbling" while scrolling. 12px
+    // reads as the same translucent effect at a fraction of the cost.
+    //
+    // `transform-gpu` promotes the header to its own compositing layer, so the
+    // browser can composite it in place on scroll instead of repainting it (and the
+    // blur) as part of the main page paint — the second half of the same fix, and the
+    // half that matters most on mobile Safari.
+    <header className="sticky top-0 z-40 border-b border-line bg-canvas/80 backdrop-blur-md transform-gpu">
       <div className="mx-auto flex h-16 max-w-content items-center gap-3 px-5 lg:px-8">
         <Link to="/" aria-label="RentEasy home" className="shrink-0">
           {/* The mark alone below `sm`. The wordmark is ~90px, which on a 375px screen
