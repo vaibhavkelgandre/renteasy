@@ -25,6 +25,7 @@ import {
   sweepStalledConfirmations,
   REQUEST_EXPIRY_HOURS,
 } from "./services/bookingService.js";
+import { sweepBlindReviews } from "./services/reviewService.js";
 
 /**
  * How often the sweeps run.
@@ -47,6 +48,14 @@ const SWEEPS = [
   // FR-708. Added as an entry rather than a second timer — which is exactly what the
   // list was for, and step 7's offer expiry will join it the same way.
   { name: "stalled-confirmations", run: sweepStalledConfirmations },
+
+  // FR-804's second trigger: a review whose blind period ran out with the other
+  // party never writing theirs. Without this entry the function exists
+  // (reviewService.js) and is simply never called — a one-sided review then stays
+  // hidden forever, which is worse than not building blind reviews at all, since it
+  // looks like the feature is working right up until someone notices their rating
+  // never moved.
+  { name: "blind-reviews", run: sweepBlindReviews },
 ];
 
 /**

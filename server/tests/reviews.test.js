@@ -185,6 +185,37 @@ describe("FR-804 — blind until both have written", () => {
     expect(forOwner.reviews[0].isPublished).toBe(true);
   });
 
+  it("refuses a review written AFTER the other one has already published — the retaliation gap", async () => {
+    // Same setup as the sweep test above: the renter writes promptly, the window
+    // lapses with the owner never writing, and the sweep publishes the renter's
+    // review alone. The owner can now READ what the renter said. Writing one now is
+    // not blind — it is a reply — which is exactly what FR-804 exists to prevent.
+    const { owner, renter, bookingId } = await completed();
+    await review(renter.agent, bookingId, 4, "Good camera, slow to reply");
+
+    await query(
+      `UPDATE reviews SET created_at = now() - make_interval(days => $1) WHERE booking_id = $2`,
+      [REVIEW_WINDOW_DAYS + 1, bookingId]
+    );
+    const { sweepBlindReviews } = await import("../src/services/reviewService.js");
+    await sweepBlindReviews();
+
+    // The owner can see it now — confirming the exploit's precondition actually holds
+    // before asserting the fix blocks it.
+    const forOwnerBefore = await readReviews(owner.agent, bookingId);
+    expect(forOwnerBefore.reviews).toHaveLength(1);
+    expect(forOwnerBefore.reviews[0].isPublished).toBe(true);
+    expect(forOwnerBefore.canReview).toBe(false);
+
+    const retaliation = await review(owner.agent, bookingId, 1, "Terrible renter");
+    expect(retaliation.status).toBe(409);
+    expect(retaliation.body.message).toMatch(/window has closed/i);
+
+    // And no second review was smuggled into the row count.
+    const { rows } = await query(`SELECT count(*) FROM reviews WHERE booking_id = $1`, [bookingId]);
+    expect(Number(rows[0].count)).toBe(1);
+  });
+
   it("tells both parties when reviews become visible", async () => {
     const { owner, renter, bookingId } = await completed();
     await review(renter.agent, bookingId, 5);

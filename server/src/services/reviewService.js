@@ -51,16 +51,46 @@ export const REVIEW_WINDOW_DAYS = 14;
 export const REVIEW_EDIT_HOURS = 48;
 
 /**
- * Asserts the booking can be reviewed at all — FR-801.
+ * Asserts the booking can be reviewed at all — FR-801 — AND that FR-804's blind
+ * guarantee still holds for a NEW submission.
+ *
+ * THE GAP THIS CLOSES: the guarantee is "neither review is visible until both are
+ * written, or until the window closes" — but "the window closes" was only ever
+ * enforced going forward (sweepBlindReviews publishes a lone review after
+ * REVIEW_WINDOW_DAYS). Nothing stopped the OTHER party from writing afterwards, once
+ * they could see what had already been published about them — at which point their
+ * review is not blind at all, it is a reply, which is exactly the retaliation FR-804
+ * exists to prevent (see this file's header comment).
+ *
+ * The rule: once ANY review on this booking is published, nobody who has NOT yet
+ * reviewed may write one. Someone who has already reviewed is left to
+ * `insertReview`'s own `uq_review_per_author_per_booking` — this must not preempt
+ * that with the wrong message, because "both wrote promptly, both published
+ * together, the first one clicks submit again by mistake" is not a closed window at
+ * all, it is an ordinary duplicate, and the caller needs the "edit it instead"
+ * message that case already has. The person this function exists to stop is
+ * specifically the one for whom "write one now" and "you can already see theirs" are
+ * simultaneously true — which by definition is only someone with NO review yet.
  *
  * @param {object} booking
+ * @param {object[]} existingReviews Already-fetched reviews for this booking — the
+ *        caller has these on hand either way, so this never issues its own query.
+ * @param {string} actorId
  * @throws {AppError} 409.
  */
-function assertReviewable(booking) {
+function assertReviewable(booking, existingReviews, actorId) {
   if (booking.status !== "COMPLETED") {
     throw conflict(
       "You can review each other once the rental is complete.",
       { booking: "Not completed yet" }
+    );
+  }
+
+  const alreadyWroteOwn = existingReviews.some((review) => review.author_id === actorId);
+  if (!alreadyWroteOwn && existingReviews.some((review) => review.published_at)) {
+    throw conflict(
+      "This booking's review window has closed — the other review is already visible.",
+      { booking: "Review window closed" }
     );
   }
 }
@@ -76,7 +106,8 @@ function assertReviewable(booking) {
  */
 export async function writeReview(bookingId, actor, { rating, body }) {
   const booking = await loadBookingForParty(bookingId, actor);
-  assertReviewable(booking);
+  const existingReviews = await findReviewsForBooking(bookingId);
+  assertReviewable(booking, existingReviews, actor.id);
 
   // WHO IS BEING REVIEWED FOLLOWS FROM WHO IS WRITING. Taking a subject id from the
   // request would let somebody aim a review at a third party, and there is nothing
@@ -154,8 +185,11 @@ export async function getBookingReviews(bookingId, actor) {
 
   return {
     reviews: visible.map((review) => present(review, actor)),
-    // FR-801 and FR-802 together: completed, and you have not written one yet.
-    canReview: booking.status === "COMPLETED" && !mine,
+    // FR-801, FR-802 and FR-804 together: completed, you have not written one yet,
+    // and nothing on this booking has published already (assertReviewable's rule —
+    // kept in sync here so the client never offers a "write a review" action that
+    // the server would then refuse).
+    canReview: booking.status === "COMPLETED" && !mine && !all.some((r) => r.published_at),
     mine: mine ? present(mine, actor) : null,
   };
 }

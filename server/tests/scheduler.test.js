@@ -21,11 +21,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // that has no business needing one.
 const sweepExpiredRequests = vi.fn();
 const sweepStalledConfirmations = vi.fn();
+const sweepBlindReviews = vi.fn();
 
 vi.mock("../src/services/bookingService.js", () => ({
   sweepExpiredRequests: (...args) => sweepExpiredRequests(...args),
   sweepStalledConfirmations: (...args) => sweepStalledConfirmations(...args),
   REQUEST_EXPIRY_HOURS: 48,
+}));
+
+vi.mock("../src/services/reviewService.js", () => ({
+  sweepBlindReviews: (...args) => sweepBlindReviews(...args),
 }));
 
 const { startScheduler, runSweeps, SWEEP_INTERVAL_MS } = await import("../src/scheduler.js");
@@ -38,6 +43,7 @@ describe("the sweep schedule", () => {
     vi.useFakeTimers();
     sweepExpiredRequests.mockReset().mockResolvedValue({ expired: 0, failed: 0 });
     sweepStalledConfirmations.mockReset().mockResolvedValue({ expired: 0, failed: 0 });
+    sweepBlindReviews.mockReset().mockResolvedValue({ expired: 0, failed: 0 });
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -135,11 +141,15 @@ describe("the sweep schedule", () => {
   it("runs EVERY sweep in the list, not just the first", async () => {
     // The failure this guards against is adding a sweep to SWEEPS and having it
     // silently never run — which looks exactly like the feature not working, three
-    // layers away from the scheduler.
+    // layers away from the scheduler. This actually caught exactly that once:
+    // sweepBlindReviews (reviewService.js) existed, worked, and was never added to
+    // SWEEPS — a one-sided review then stayed hidden forever, invisibly, because
+    // nothing here asserted the list's own membership.
     await runSweeps();
 
     expect(sweepExpiredRequests).toHaveBeenCalledTimes(1);
     expect(sweepStalledConfirmations).toHaveBeenCalledTimes(1);
+    expect(sweepBlindReviews).toHaveBeenCalledTimes(1);
   });
 
   it("runs the rest of the list after one of them throws", async () => {
@@ -149,6 +159,7 @@ describe("the sweep schedule", () => {
 
     await expect(runSweeps()).resolves.toBeUndefined();
     expect(sweepStalledConfirmations).toHaveBeenCalledTimes(1);
+    expect(sweepBlindReviews).toHaveBeenCalledTimes(1);
   });
 
   it("logs a pass that did something, and stays quiet about one that did not", async () => {
