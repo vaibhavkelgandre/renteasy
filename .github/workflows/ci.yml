@@ -87,7 +87,13 @@ jobs:
           # QUOTED on purpose. Unquoted, YAML reads a version as a number, and
           # anything with a single decimal point loses a trailing zero — '3.10'
           # becomes 3.1. See docs/learn/01-yaml.md §5.2.
-          node-version: '20'
+          # Must match `engines.node` in the package.json files, and therefore the
+          # version Render runs. CI testing one major while production runs another is
+          # a difference nothing would report until something broke in production.
+          #
+          # Moved off 20 because GitHub is deprecating it on the runners, and because
+          # Render's current default is newer.
+          node-version: '22'
           # Caches ~/.npm between runs, keyed on the lock file's hash.
           cache: npm
           # Both lock files. Neither is at the repository root — this repo keeps

@@ -2,6 +2,9 @@
   "name": "renteasy",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "type": "module",
   "description": "RentEasy - a two-sided marketplace for renting things by the hour, day or month",
   "scripts": {
