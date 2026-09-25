@@ -120,6 +120,18 @@ export async function findResetTokenByHash(tokenHash) {
  * proves control of the address it was mailed to, so it must not set a password on an
  * account whose address has since changed.
  *
+ * TWO MORE COLUMNS MOVE IN THE SAME UPDATE, same reasoning as
+ * `userRepository.updatePasswordHash` (self-service change) — a password reset is
+ * usually a response to "I think someone else has my password", so it must not leave
+ * a stolen session outliving it, and must not leave a queued email-change request
+ * (possibly the attacker's own doing) still able to complete:
+ *   - `session_epoch = gen_random_uuid()` signs out every session issued before
+ *     this instant — see 013's migration comment and middlewares/authMiddleware.js.
+ *   - `pending_email = NULL` cancels any in-flight email change. `verifyEmail`
+ *     (authService.js) already refuses a token whose proven address no longer
+ *     matches `pending_email`, so clearing this column is sufficient on its own —
+ *     no separate token to hunt down and kill.
+ *
  * @param {object} input
  * @param {string} input.tokenId
  * @param {string} input.passwordHash Already hashed. This function never hashes.
@@ -139,6 +151,8 @@ export async function consumeTokenAndSetPassword({ tokenId, passwordHash }) {
      )
      UPDATE users u
         SET password_hash = $2,
+            pending_email = NULL,
+            session_epoch = gen_random_uuid(),
             updated_at    = now()
        FROM claimed c
       WHERE u.id = c.user_id

@@ -18,6 +18,7 @@ import {
   insertUser,
   markEmailVerified,
   confirmEmailChange,
+  reclaimUnverifiedRegistration,
 } from "../repositories/userRepository.js";
 import {
   issueVerificationToken,
@@ -136,10 +137,40 @@ export async function register({ name, email, password, phone, acceptedTermsVers
     return;
   }
 
-  // Registered but never confirmed. Almost always the same person trying again because
-  // the first email did not arrive — so reissue rather than refuse. The old link dies,
-  // which is what `uq_evt_active_user` guarantees.
-  await issueAndSendVerification(existing);
+  // ⚠️ RECLAIMS THE ROW, rather than merely resending a link to it — this is the
+  // fix for the pre-registration takeover: without it, this branch just resent a
+  // verification email to whatever password was ALREADY on the account, silently
+  // discarding the password this caller just chose. An attacker who registered the
+  // address first (and signed in — unverified sign-in is allowed) kept a working
+  // session indefinitely; the real owner's own "registration" changed nothing about
+  // the account they thought they were creating.
+  //
+  // `reclaimUnverifiedRegistration` (userRepository.js) overwrites the password AND
+  // signs out every existing session for this account in the same statement — so
+  // whoever was signed in as the previous holder of this unverified row is refused
+  // on their very next request, not twelve hours from now. It also cancels any
+  // pending email change the previous holder had queued.
+  //
+  // Still "almost always the same person trying again because the first email did
+  // not arrive" in the ordinary, non-malicious case — reclaiming rather than merely
+  // reissuing costs that person nothing, since they are about to prove control of
+  // the address either way.
+  const reclaimed = await reclaimUnverifiedRegistration(existing.id, {
+    name,
+    passwordHash,
+    phone: phone ?? null,
+    acceptedTermsVersion,
+  });
+
+  // A race: the row stopped being eligible (verified, suspended or deleted) between
+  // the lookup above and this write. Nothing more to do — the same silent outcome as
+  // every other branch here, so a race cannot become a second oracle.
+  if (!reclaimed) return;
+
+  // Reissuing against the RECLAIMED row, not `existing` — its `uq_evt_active_user`
+  // replacement already kills whatever token existed, for whichever email it was
+  // last issued for (the account's own address, or a since-cancelled pending one).
+  await issueAndSendVerification(reclaimed);
 }
 
 /**
@@ -306,7 +337,7 @@ export async function login({ email, password }) {
   if (user.status !== "ACTIVE") throw unauthorized(message);
 
   const { password_hash: _hash, ...safeUser } = user;
-  return { user: safeUser, token: signAuthToken(user.id) };
+  return { user: safeUser, token: signAuthToken(user.id, user.session_epoch) };
 }
 
 /**

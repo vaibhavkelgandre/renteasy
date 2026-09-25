@@ -14,7 +14,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { app } from "../src/app.js";
 import { query } from "../src/config/db.js";
 import { env } from "../src/config/env.js";
-import { sessionCookieFor, verifiedUser } from "./helpers/factories.js";
+import { sessionCookieFor, verifiedUser, TEST_PASSWORD } from "./helpers/factories.js";
 import { startRealtimeServer, waitFor } from "./helpers/sockets.js";
 import { isOnline, userRoom } from "../src/ws/connectionRegistry.js";
 import { revalidateConnections } from "../src/ws/socketServer.js";
@@ -81,6 +81,31 @@ describe("the handshake", () => {
 
     const message = await realtime.refuse(cookie);
 
+    expect(message).toBe("Authentication required");
+  });
+
+  it("refuses a handshake with a cookie issued before a password change", async () => {
+    realtime = await startRealtimeServer();
+    const { agent, email } = await verifiedUser(app);
+
+    // A session obtained BEFORE the change — a stolen cookie, or an old device.
+    const staleCookie = await sessionCookieFor(app, email);
+
+    // Confirmed working first, so the refusal below proves the invalidation rather
+    // than some unrelated handshake failure.
+    const before = await realtime.connect(staleCookie);
+    expect(before.connected).toBe(true);
+    before.disconnect();
+
+    const changed = await agent
+      .patch("/api/profile/password")
+      .send({ currentPassword: TEST_PASSWORD, newPassword: "a-different-good-password" });
+    expect(changed.status).toBe(200);
+
+    // A NEW handshake attempt with the stale cookie is refused immediately — see
+    // socketServer.js's own comment on why an ALREADY-OPEN socket is a narrower,
+    // separately-accepted residual gap that this does not cover.
+    const message = await realtime.refuse(staleCookie);
     expect(message).toBe("Authentication required");
   });
 

@@ -16,7 +16,8 @@ import {
   deleteOwnAccount,
   getPublicProfile,
 } from "../services/profileService.js";
-import { clearAuthCookie } from "../utils/cookies.js";
+import { clearAuthCookie, setAuthCookie } from "../utils/cookies.js";
+import { signAuthToken } from "../utils/jwt.js";
 import { sendSuccess } from "../utils/response.js";
 
 /**
@@ -106,13 +107,14 @@ export async function deleteMyPendingEmail(req, res, next) {
 /**
  * PATCH /api/profile/password
  *
- * Returns no user and sets no cookie. The session survives deliberately — this is the
- * caller changing their OWN password on purpose, and signing them out of the tab they
- * are looking at would read as a failure.
- *
- * Note it does not sign out OTHER sessions either, which is a genuine gap rather than a
- * decision: a JWT here is signed over the user id, not the password hash. See
- * docs/features/02-password-reset.md §7.
+ * ⚠️ REISSUES THE COOKIE — this is no longer the gap the comment here used to
+ * describe. `changePassword` (profileService.js) now rotates the user's
+ * `session_epoch`, which signs out every session — including, without this, the
+ * very tab that just made the change. Reissuing a fresh token here, embedding the
+ * NEW epoch `changePassword` returns, is what keeps THIS session alive while every
+ * OTHER one (an attacker's stolen cookie, an old device) fails its next
+ * `requireAuth` check immediately rather than riding out its remaining 12-hour life.
+ * See utils/jwt.js's `isSessionEpochCurrent`.
  *
  * @param {import("express").Request} req Requires `requireAuth`.
  * @param {import("express").Response} res
@@ -121,7 +123,8 @@ export async function deleteMyPendingEmail(req, res, next) {
  */
 export async function patchMyPassword(req, res, next) {
   try {
-    await changePassword(req.user, req.body);
+    const sessionEpoch = await changePassword(req.user, req.body);
+    setAuthCookie(res, signAuthToken(req.user.id, sessionEpoch));
     sendSuccess(res, { message: "Password updated", data: null });
   } catch (error) {
     next(error);

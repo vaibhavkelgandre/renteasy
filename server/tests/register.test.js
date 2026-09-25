@@ -17,6 +17,7 @@ import {
   registerUser,
   verificationTokenFor,
   verifiedUser,
+  sessionCookieFor,
   TEST_PASSWORD,
   nextEmail,
 } from "./helpers/factories.js";
@@ -135,6 +136,108 @@ describe("POST /api/auth/register — the enumeration guarantee", () => {
       email.toLowerCase(),
     ]);
     expect(rows[0].n).toBe(1);
+  });
+});
+
+describe("POST /api/auth/register — reclaiming an unverified account (account-takeover fix)", () => {
+  it("overwrites the password and signs out whoever registered the address first", async () => {
+    const email = nextEmail();
+
+    // The "attacker" registers first, with a password of their own choosing, and
+    // signs in — unverified sign-in is allowed (§3.3). Before the fix, nothing about
+    // this row ever changed again: a second registration of the same address just
+    // resent a link to THIS account, with THIS password.
+    await request(app)
+      .post("/api/auth/register")
+      .send(validBody({ email, password: "attacker-password-1" }));
+    const attackerCookie = await sessionCookieFor(app, email, "attacker-password-1");
+
+    // Confirm the attacker really does have a working session before the fix is
+    // exercised, so the assertion below proves something rather than passing by
+    // accident.
+    const before = await request(app).get("/api/profile").set("Cookie", attackerCookie);
+    expect(before.status).toBe(200);
+
+    // The real owner "registers" the same address with THEIR OWN password. The
+    // response stays byte-identical to every other unverified-email case (§3.1) —
+    // reclaiming what happens to the ACCOUNT must not change what the CALLER is told.
+    const reclaim = await request(app)
+      .post("/api/auth/register")
+      .send(validBody({ email, name: "Real Owner", password: "real-owners-password" }));
+    expect(reclaim.status).toBe(202);
+
+    // The attacker's session, obtained before the reclaim, must be refused on its
+    // very next request — not ride out its remaining 12-hour life.
+    const after = await request(app).get("/api/profile").set("Cookie", attackerCookie);
+    expect(after.status).toBe(401);
+
+    // The attacker's password no longer opens the account...
+    const oldPasswordLogin = await request(app)
+      .post("/api/auth/login")
+      .send({ email, password: "attacker-password-1" });
+    expect(oldPasswordLogin.status).toBe(401);
+
+    // ...and the real owner's does, as the account they now fully control.
+    const newLogin = await request(app)
+      .post("/api/auth/login")
+      .send({ email, password: "real-owners-password" });
+    expect(newLogin.status).toBe(200);
+    expect(newLogin.body.data.user.name).toBe("Real Owner");
+  });
+
+  it("cancels a pending email change the previous holder had queued", async () => {
+    const email = nextEmail();
+    await request(app)
+      .post("/api/auth/register")
+      .send(validBody({ email, password: "attacker-password-1" }));
+    const attackerCookie = await sessionCookieFor(app, email, "attacker-password-1");
+
+    // The attacker queues a change to an address only they control, using the
+    // password they set. Without the fix, this link would still work after the real
+    // owner reclaimed the account, letting the attacker complete the takeover later.
+    const attackerEmail = nextEmail();
+    const changeRequest = await request(app)
+      .patch("/api/profile/email")
+      .set("Cookie", attackerCookie)
+      .send({ newEmail: attackerEmail, currentPassword: "attacker-password-1" });
+    expect(changeRequest.status).toBe(202);
+    const pendingToken = verificationTokenFor(attackerEmail);
+
+    await request(app)
+      .post("/api/auth/register")
+      .send(validBody({ email, password: "real-owners-password" }));
+
+    // The queued link no longer proves anything about this account's current state —
+    // same 410 as any other token whose target has moved on.
+    const confirm = await request(app).post("/api/auth/verify").send({ token: pendingToken });
+    expect(confirm.status).toBe(410);
+
+    const { rows } = await query(`SELECT email, pending_email FROM users WHERE lower(email) = $1`, [
+      email.toLowerCase(),
+    ]);
+    expect(rows[0].email.toLowerCase()).toBe(email.toLowerCase());
+    expect(rows[0].pending_email).toBeNull();
+  });
+
+  it("does NOT reclaim an already-verified account", async () => {
+    // The service already checks `existing.email_verified_at` before ever reaching
+    // the reclaim — this pins that `reclaimUnverifiedRegistration`'s own WHERE guard
+    // (email_verified_at IS NULL) is a real backstop and not dead code, by calling
+    // register() on a verified address and confirming nothing about the account
+    // moved.
+    const { email, user } = await verifiedUser(app);
+
+    await request(app)
+      .post("/api/auth/register")
+      .send(validBody({ email, name: "Someone Else", password: "a-completely-different-password" }));
+
+    const { rows } = await query(`SELECT name FROM users WHERE id = $1`, [user.id]);
+    expect(rows[0].name).not.toBe("Someone Else");
+
+    const stillWorks = await request(app)
+      .post("/api/auth/login")
+      .send({ email, password: TEST_PASSWORD });
+    expect(stillWorks.status).toBe(200);
   });
 });
 

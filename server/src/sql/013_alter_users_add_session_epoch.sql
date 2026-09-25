@@ -1,0 +1,43 @@
+-- 013 — a way to invalidate every session for an account at once
+--
+-- Documented in docs/features/01-public-registration.md and docs/features/03-profile.md.
+-- Never edit this file once it has been applied — the migration runner stores a
+-- checksum and will refuse to run.
+
+-- AN OPAQUE MARKER, NOT A TIMESTAMP — read this before changing anything here.
+--
+-- A session token (utils/jwt.js) is a 12-hour bearer credential with no server-side
+-- record of its own — by design, so there was previously no way to revoke one before
+-- it naturally expired. That is fine for an ordinary logout, but it is a real gap for
+-- three events that specifically mean "a credential this session was trusted on the
+-- strength of may no longer be trustworthy": the password changes (self-service or via
+-- reset), a pending email change is confirmed, or an unverified registration is
+-- reclaimed by its real owner (see authService.register).
+--
+-- THE FIRST DESIGN TRIED HERE WAS A TIMESTAMP (`sessions_valid_after`, compared
+-- against a token's `iat`) AND IT WAS WRONG — caught by a failing test, not reasoned
+-- out in advance. A JWT's `iat` is SECOND-resolution by the JWT spec
+-- (`Math.floor(Date.now() / 1000)`), while Postgres's `now()` has microsecond
+-- resolution. Two token/write pairs that land in the same wall-clock second — which a
+-- fast automated test hits constantly, and which a real attack is not actually immune
+-- to either — are ambiguous under ANY choice of `<`/`<=`/`>`/`>=`: rounding the write
+-- down to match `iat`'s granularity let an old session that merely happened to share
+-- the same second survive; leaving it at full precision rejected a legitimately
+-- reissued token whose `iat` floored to the second BEFORE the microsecond-precise
+-- write it was reissued from within the very same request.
+--
+-- AN OPAQUE, EXACT-MATCH VALUE SIDESTEPS THE WHOLE PROBLEM. Every session token
+-- embeds the value that was current when it was ISSUED (see `signAuthToken`,
+-- `utils/jwt.js`); `requireAuth`/`authenticateSocket` trust a token only when its
+-- embedded value EXACTLY EQUALS the user's CURRENT one. There is no time window to
+-- compare, no clock to trust, and no rounding — a token from before an invalidating
+-- write carries the OLD value, a token issued from that write's own `RETURNING`
+-- clause carries the NEW one, and the two are never mistaken for each other no matter
+-- how close together in time they were minted.
+--
+-- `uuid DEFAULT gen_random_uuid()`: EVERY row always has a value, including one that
+-- predates this migration — there is no "no restriction" state to special-case (unlike
+-- a nullable timestamp), which is what removes the null-check branch the first design
+-- needed everywhere it was read. `NOT NULL` for the same reason: a session-epoch check
+-- must never silently no-op because the column happened to be unset.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS session_epoch uuid NOT NULL DEFAULT gen_random_uuid();

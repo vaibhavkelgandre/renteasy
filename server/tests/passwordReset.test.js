@@ -19,6 +19,8 @@ import {
   registerUser,
   userWithResetToken,
   resetTokenFor,
+  sessionCookieFor,
+  verificationTokenFor,
   nextEmail,
   TEST_PASSWORD,
 } from "./helpers/factories.js";
@@ -201,6 +203,48 @@ describe("POST /api/auth/reset-password", () => {
       .post("/api/auth/login")
       .send({ email, password: TEST_PASSWORD });
     expect(withOld.status).toBe(401);
+  });
+
+  it("signs out every existing session — a stolen cookie must not outlive the reset", async () => {
+    const { email, token } = await userWithResetToken(app);
+
+    // A session obtained BEFORE the reset — exactly the "stolen cookie" scenario the
+    // fix exists for. Confirmed working first, so the assertion below proves
+    // something rather than passing by accident.
+    const oldCookie = await sessionCookieFor(app, email, TEST_PASSWORD);
+    const before = await request(app).get("/api/profile").set("Cookie", oldCookie);
+    expect(before.status).toBe(200);
+
+    const response = await request(app)
+      .post("/api/auth/reset-password")
+      .send({ token, password: NEW_PASSWORD });
+    expect(response.status).toBe(200);
+
+    // Refused on its very next request — not left to ride out its remaining 12-hour
+    // life, which is what undercut the main reason people reset a password at all.
+    const after = await request(app).get("/api/profile").set("Cookie", oldCookie);
+    expect(after.status).toBe(401);
+  });
+
+  it("cancels a pending email change queued before the reset", async () => {
+    const { email, token } = await userWithResetToken(app);
+    const oldCookie = await sessionCookieFor(app, email, TEST_PASSWORD);
+
+    // Whoever held the old session queues a change to an address they control —
+    // without the fix, this link would still work after the reset, giving them a
+    // second route back into the account even though their password no longer does.
+    const newEmail = nextEmail();
+    const changeRequest = await request(app)
+      .patch("/api/profile/email")
+      .set("Cookie", oldCookie)
+      .send({ newEmail, currentPassword: TEST_PASSWORD });
+    expect(changeRequest.status).toBe(202);
+    const pendingToken = verificationTokenFor(newEmail);
+
+    await request(app).post("/api/auth/reset-password").send({ token, password: NEW_PASSWORD });
+
+    const confirm = await request(app).post("/api/auth/verify").send({ token: pendingToken });
+    expect(confirm.status).toBe(410);
   });
 
   it("DOES NOT sign anyone in", async () => {

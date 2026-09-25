@@ -17,6 +17,7 @@ const PUBLIC_COLUMNS = `
   email_verified_at, phone_verified_at,
   pending_email,
   accepted_terms_version, accepted_terms_at,
+  session_epoch,
   created_at, updated_at
 `;
 
@@ -95,6 +96,76 @@ export async function insertUser({ name, email, passwordHash, phone = null, acce
 }
 
 /**
+ * Overwrites an UNVERIFIED account's registration details — the fix for the
+ * pre-registration takeover in authService.register.
+ *
+ * THE GAP THIS CLOSES: registering an email that already has an unverified account
+ * used to just resend a verification link to the EXISTING row, discarding whatever
+ * password the new caller had just chosen. That let anyone register a victim's
+ * address first, sign in (unverified sign-in is allowed), and keep that session —
+ * the victim's own later registration attempt changed nothing about the account they
+ * thought they were creating. This function is what the real owner's second
+ * registration attempt now does instead: it genuinely reclaims the row.
+ *
+ * FOUR THINGS HAPPEN IN ONE STATEMENT, and all four matter:
+ *   - `password_hash` is overwritten — the caller's password is the one that counts
+ *     from now on, not whatever was set first.
+ *   - `session_epoch = gen_random_uuid()` rotates to a fresh value, invalidating
+ *     every session token that embedded the old one (see 013's migration comment
+ *     and middlewares/authMiddleware.js) — an attacker's earlier session is refused
+ *     on its very next request, not twelve hours from now.
+ *   - `pending_email = NULL` cancels any email-change request the previous holder
+ *     had in flight. Left alone, an attacker who had queued a change to their own
+ *     address could still complete it later via that now-orphaned verification
+ *     token — `verifyEmail`'s own guard (authService.js) already refuses a token
+ *     whose proven address no longer matches `pending_email`, so clearing this one
+ *     column is sufficient; there is no separate token row to hunt down and kill.
+ *   - `name`/`phone`/`accepted_terms_version`/`accepted_terms_at` are all reset to
+ *     what the new caller actually submitted — from their point of view this IS how
+ *     they created the account, and the row should reflect that rather than
+ *     whatever the previous registration happened to type in.
+ *
+ * `email_verified_at IS NULL AND status = 'ACTIVE'` in the WHERE clause is the whole
+ * guard: `register()` already checks both before calling this, but the check-then-
+ * write gap between them is exactly where a TOCTOU bug would hide, so the same
+ * conditions are repeated here as the actual authority. A verified or non-ACTIVE
+ * account matches nothing and this returns null, same shape as every other
+ * conditional write in this file.
+ *
+ * @param {string} userId
+ * @param {object} input
+ * @param {string} input.name
+ * @param {string} input.passwordHash Already hashed. This function never hashes.
+ * @param {string|null} [input.phone]
+ * @param {string} input.acceptedTermsVersion
+ * @returns {Promise<object | null>} The updated user, or null if the row was no
+ *          longer eligible (verified or not ACTIVE) by the time this ran.
+ * @throws {Error} On a database failure.
+ */
+export async function reclaimUnverifiedRegistration(
+  userId,
+  { name, passwordHash, phone = null, acceptedTermsVersion }
+) {
+  const { rows } = await query(
+    `UPDATE users
+        SET name                   = $2,
+            password_hash          = $3,
+            phone                  = $4,
+            accepted_terms_version = $5,
+            accepted_terms_at      = now(),
+            pending_email          = NULL,
+            session_epoch          = gen_random_uuid(),
+            updated_at             = now()
+      WHERE id = $1
+        AND email_verified_at IS NULL
+        AND status = 'ACTIVE'
+      RETURNING ${PUBLIC_COLUMNS}`,
+    [userId, name, passwordHash, phone, acceptedTermsVersion]
+  );
+  return rows[0] ?? null;
+}
+
+/**
  * Marks an email address verified.
  *
  * Takes the ADDRESS as well as the id, and matches on both. That is the guard from
@@ -158,18 +229,42 @@ export async function updateProfileFields(id, { name, phone }) {
 /**
  * Replaces a user's password hash.
  *
+ * TWO MORE COLUMNS MOVE IN THE SAME STATEMENT, both there for the same reason: the
+ * most likely reason somebody changes their password is that they think someone else
+ * has it (see profileService.changePassword's own comment).
+ *   - `session_epoch = gen_random_uuid()` signs out every OTHER session on the spot
+ *     — see 013's migration comment. Without it a stolen session outlives the very
+ *     change meant to lock the thief out, for up to its remaining 12-hour life.
+ *   - `pending_email = NULL` cancels any email-change request in flight. If the
+ *     account was compromised, an attacker may have queued a change to their own
+ *     address using the (soon to be invalid) password they had — same reasoning as
+ *     `reclaimUnverifiedRegistration` above, and the same guarantee: `verifyEmail`
+ *     refuses a token whose proven address no longer matches `pending_email`, so
+ *     clearing this column is sufficient on its own.
+ *
+ * RETURNS THE NEW `session_epoch`, not just a boolean — `patchMyPassword`
+ * (profileController.js) needs the exact value just written so it can reissue the
+ * caller's own cookie embedding it, which is what keeps that one session alive while
+ * every other one fails its next check. See `signAuthToken`'s own comment.
+ *
  * @param {string} id
  * @param {string} passwordHash Already hashed. This function never hashes.
- * @returns {Promise<boolean>} True if a row was updated.
+ * @returns {Promise<string | null>} The new `session_epoch`, or null if no row was
+ *          updated.
  * @throws {Error} On a database failure.
  */
 export async function updatePasswordHash(id, passwordHash) {
-  const { rowCount } = await query(
-    `UPDATE users SET password_hash = $2, updated_at = now()
-      WHERE id = $1 AND status = 'ACTIVE'`,
+  const { rows } = await query(
+    `UPDATE users
+        SET password_hash = $2,
+            pending_email  = NULL,
+            session_epoch  = gen_random_uuid(),
+            updated_at     = now()
+      WHERE id = $1 AND status = 'ACTIVE'
+      RETURNING session_epoch`,
     [id, passwordHash]
   );
-  return rowCount === 1;
+  return rows[0]?.session_epoch ?? null;
 }
 
 /**
@@ -222,6 +317,15 @@ export async function clearPendingEmail(id) {
  * token's address: it can only ever promote the address the user actually asked for, so
  * a token issued for some other address matches no row.
  *
+ * `session_epoch = gen_random_uuid()` too, same reasoning as `updatePasswordHash`
+ * above — the address that can recover this account has just changed, so every
+ * session token issued before this moment embeds a now-stale epoch and is signed
+ * out. This is deliberately true even for the legitimate owner confirming their own
+ * change: the useful side effect is that whoever holds a STOLEN session but not the
+ * account's password cannot survive completing a takeover, since the very session
+ * they used to get here stops working the instant it succeeds, and re-authenticating
+ * needs the password they never had.
+ *
  * @param {string} userId
  * @param {string} newEmail The address the token was issued for.
  * @returns {Promise<object|null>} The updated user, or null if nothing matched.
@@ -235,6 +339,7 @@ export async function confirmEmailChange(userId, newEmail) {
         SET email             = $2,
             pending_email     = NULL,
             email_verified_at = now(),
+            session_epoch     = gen_random_uuid(),
             updated_at        = now()
       WHERE id = $1
         AND lower(pending_email) = lower($2)
@@ -258,11 +363,16 @@ export async function confirmEmailChange(userId, newEmail) {
  * the timestamp.
  *
  * @param {string} id
+ * @param {(text: string, params?: unknown[]) => Promise<import("pg").QueryResult>} [exec]
+ *        Defaults to the module's own `query`. `deleteOwnAccount` (profileService.js)
+ *        passes `withTransaction`'s callback so this commits atomically alongside
+ *        `unpublishAllListingsForOwner` — B10's fix, so a crash between the two never
+ *        leaves an account deleted with its listings still live and bookable.
  * @returns {Promise<boolean>} True if this call was the one that deleted it.
  * @throws {Error} On a database failure.
  */
-export async function softDeleteUser(id) {
-  const { rowCount } = await query(
+export async function softDeleteUser(id, exec = query) {
+  const { rowCount } = await exec(
     `UPDATE users
         SET status = 'DELETED', deleted_at = now(), pending_email = NULL, updated_at = now()
       WHERE id = $1 AND status <> 'DELETED'`,

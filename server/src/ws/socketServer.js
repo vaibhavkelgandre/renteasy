@@ -73,6 +73,21 @@ export const REVALIDATION_INTERVAL_MS = 5 * 60 * 1000;
  * still do nothing — every inbound event re-checks authorization against the database
  * itself. This sweep is the backstop, not the gate.
  *
+ * DOES NOT CHECK `session_epoch` (utils/jwt.js, 013's migration), only `status` — a
+ * known, accepted gap rather than an oversight. `authenticateSocket` refuses a NEW
+ * handshake whose token embeds a stale epoch; this sweep would need to check each of
+ * a user's sockets individually against its own embedded epoch (the connection
+ * registry deliberately holds socket IDS, not per-socket session data — see its own
+ * header comment on why) to close an ALREADY-OPEN socket the same way, which is a
+ * bigger change than this sweep's existing per-user shape. The residual window is
+ * narrow and low-severity: an already-open socket survives at most one more interval
+ * after a password change, and — same reasoning as the paragraph above — every
+ * inbound event on it is still authorized independently by the service it reaches
+ * (`loadBookingForParty` and friends check party membership directly, never trusting
+ * anything about how the socket authenticated). What a lingering socket keeps is the
+ * ability to keep using a connection it was already legitimately authorized for, not
+ * any new capability.
+ *
  * @param {import("socket.io").Server} io
  * @returns {Promise<number>} How many users were disconnected — for the log line, and
  *          for the tests to assert on.

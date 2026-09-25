@@ -65,8 +65,20 @@ regardless of whether that email exists.** The branch happens in the **email**, 
 | Situation | What is created | What is emailed |
 |---|---|---|
 | Email is new | user (unverified) + verification token | *"Confirm your email"* with the link |
-| Email exists, **unverified** | nothing; token reissued | *"Confirm your email"* — same as above |
+| Email exists, **unverified** | the row is **reclaimed**: name, password and phone overwritten with this attempt's own, every existing session for it signed out, any pending email change cancelled, token reissued — see the note below | *"Confirm your email"* — same as above |
 | Email exists, **verified** | nothing | *"Someone tried to register with your email. If it was you, you already have an account — sign in, or reset your password."* |
+
+**The "unverified" row is intentionally overwritten, not merely resent to — this closed a real
+account-takeover gap.** The response is still byte-identical either way (§3.1's rule is unaffected:
+what happens to the *account* differs, what the *caller* is told does not), but the account itself
+used to just resend a link to whatever password was already on it — silently discarding the
+password THIS caller chose. That let anyone register a victim's address first, sign in (§3.3 allows
+an unverified sign-in), and keep a working session indefinitely; the victim's own later registration
+attempt changed nothing about the account they thought they were creating. `reclaimUnverifiedRegistration`
+(`userRepository.js`) now overwrites the password and profile fields and rotates `session_epoch` in
+the same statement, so whoever was signed in as the previous holder is refused on their very next
+request. See [02-password-reset.md](02-password-reset.md) §7 for the `session_epoch` mechanism
+itself, which this reuses rather than duplicating.
 
 Every case answers:
 
@@ -140,7 +152,7 @@ Applies to `POST /auth/register` and `POST /auth/verify/resend`.
 | # | Case | Behaviour |
 |---|---|---|
 | E-1 | Email exists, verified | §3.1 — identical response, "someone tried" email |
-| E-2 | Email exists, unverified | §3.1 — identical response, verification reissued |
+| E-2 | Email exists, unverified | §3.1 — identical response; the row is reclaimed (password overwritten, sessions signed out) and verification reissued |
 | E-3 | Differs only by case (`Priya@` vs `priya@`) | Same account. Unique index on `lower(email)` |
 | E-4 | Plus-addressing (`priya+rent@gmail.com`) | **Allowed.** A distinct address by the standard; normalising it away breaks a legitimate habit. Revisit only if it becomes a real abuse vector |
 | E-5 | Registering while already signed in | `409`. Sign out first — silently replacing a live session is worse |

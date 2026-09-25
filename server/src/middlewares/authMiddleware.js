@@ -11,7 +11,7 @@
  */
 
 import { AUTH_COOKIE } from "../utils/cookies.js";
-import { verifyAuthToken } from "../utils/jwt.js";
+import { verifyAuthToken, isSessionEpochCurrent } from "../utils/jwt.js";
 import { findUserById } from "../repositories/userRepository.js";
 import { forbidden, unauthorized } from "../utils/errors.js";
 
@@ -28,8 +28,8 @@ export async function requireAuth(req, _res, next) {
     const token = req.cookies?.[AUTH_COOKIE];
     if (!token) throw unauthorized();
 
-    const userId = verifyAuthToken(token);
-    if (!userId) throw unauthorized();
+    const session = verifyAuthToken(token);
+    if (!session) throw unauthorized();
 
     // A DATABASE LOOKUP ON EVERY REQUEST, deliberately.
     //
@@ -37,9 +37,17 @@ export async function requireAuth(req, _res, next) {
     // time, so trusting it means a user who confirms their email stays "unverified"
     // for up to 12 hours - unable to list anything, with no explanation, until they
     // sign out and back in. Suspension would take just as long to bite.
-    const user = await findUserById(userId);
+    const user = await findUserById(session.userId);
     if (!user) throw unauthorized();
     if (user.status !== "ACTIVE") throw unauthorized();
+
+    // A password change/reset, an email-change confirmation, or a reclaimed
+    // unverified registration all rotate `session_epoch` to a fresh value — see
+    // 013's migration comment. A token embedding the OLD epoch is refused here, on
+    // this very next request, rather than riding out its remaining 12-hour life.
+    if (!isSessionEpochCurrent(session.sessionEpoch, user.session_epoch)) {
+      throw unauthorized();
+    }
 
     req.user = user;
     next();
@@ -122,11 +130,17 @@ export async function attachUserIfPresent(req, _res, next) {
     const token = req.cookies?.[AUTH_COOKIE];
     if (!token) return next();
 
-    const userId = verifyAuthToken(token);
-    if (!userId) return next();
+    const session = verifyAuthToken(token);
+    if (!session) return next();
 
-    const user = await findUserById(userId);
-    if (user && user.status === "ACTIVE") req.user = user;
+    const user = await findUserById(session.userId);
+    if (
+      user &&
+      user.status === "ACTIVE" &&
+      isSessionEpochCurrent(session.sessionEpoch, user.session_epoch)
+    ) {
+      req.user = user;
+    }
 
     next();
   } catch {

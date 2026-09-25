@@ -232,11 +232,27 @@ mere arrival carries the same fact.
 
 Named deliberately, so they are gaps rather than oversights.
 
-- **A reset does not sign out other sessions.** This is the significant one. A JWT is signed over
-  the user id, not the password hash, so a session stolen before the reset stays valid for up to 12
-  hours after it — which undercuts the main reason people reset a password in the first place.
-  Fixing it needs a `token_version` column on `users`, carried in the JWT and compared in
-  `requireAuth`. Already recorded in [1.status.md](../1.status.md) §8.
+- ~~A reset does not sign out other sessions~~ — **fixed.** A `session_epoch` (uuid,
+  migration 013) is rotated to a fresh `gen_random_uuid()` by
+  `consumeTokenAndSetPassword` (this feature), `updatePasswordHash` (profile), and two
+  related places — `confirmEmailChange` and `reclaimUnverifiedRegistration`
+  (features/01, the fix for a re-registration takeover). Every session token embeds
+  the epoch that was current when it was issued; `requireAuth` / `attachUserIfPresent`
+  / `authenticateSocket` trust a token only when its embedded value EXACTLY EQUALS
+  the user's current one (`utils/jwt.js`'s `isSessionEpochCurrent`) — so a session
+  stolen before a reset is refused on its very next request, not up to 12 hours
+  later. (A timestamp-based first design, compared against a token's `iat`, was tried
+  and abandoned after a failing test caught a genuine rounding ambiguity between
+  `iat`'s second-resolution and Postgres's microsecond-resolution `now()` — an opaque
+  exact-match marker has no such ambiguity.) The same write also clears
+  `pending_email`, so a queued email-change request cannot survive the reset either.
+  Recorded in [1.status.md](../1.status.md) §5.3.
+  - One deliberate residual gap, not this fix's job to close: an already-open
+    WebSocket connection survives up to 5 minutes after an invalidation (the
+    periodic revalidation sweep's interval — see `ws/socketServer.js`'s own
+    comment). A *new* handshake is refused immediately; every inbound event on an
+    already-open socket is still independently authorized by the service it
+    reaches, so the lingering connection grants no new capability.
 - **No "your password was changed" notification.** Standard practice, and the thing that tells a
   real owner their account was taken. Deliberately out of scope here: FR-020–027 do not ask for it,
   and it wants its own requirement rather than arriving as a surprise.

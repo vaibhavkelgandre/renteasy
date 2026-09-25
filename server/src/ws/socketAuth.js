@@ -25,7 +25,7 @@
 
 import cookieParser from "cookie-parser";
 import { AUTH_COOKIE } from "../utils/cookies.js";
-import { verifyAuthToken } from "../utils/jwt.js";
+import { verifyAuthToken, isSessionEpochCurrent } from "../utils/jwt.js";
 import { findUserById } from "../repositories/userRepository.js";
 import { env } from "../config/env.js";
 import { unauthorized } from "../utils/errors.js";
@@ -106,11 +106,20 @@ export async function authenticateSocket(socket, next) {
     const token = socket.request.cookies?.[AUTH_COOKIE];
     if (!token) return next(unauthorized());
 
-    const userId = verifyAuthToken(token);
-    if (!userId) return next(unauthorized());
+    const session = verifyAuthToken(token);
+    if (!session) return next(unauthorized());
 
-    const user = await findUserById(userId);
+    const user = await findUserById(session.userId);
     if (!user || user.status !== "ACTIVE") return next(unauthorized());
+
+    // Same check HTTP's requireAuth makes — a password change/reset, an email-change
+    // confirmation, or a reclaimed unverified registration must close an already-open
+    // socket's ability to reconnect just as surely as it closes an HTTP session. This
+    // only covers the HANDSHAKE; socketServer.js's periodic revalidation sweep is what
+    // catches a socket that was already connected when the invalidation happened.
+    if (!isSessionEpochCurrent(session.sessionEpoch, user.session_epoch)) {
+      return next(unauthorized());
+    }
 
     socket.data.user = user;
     next();
