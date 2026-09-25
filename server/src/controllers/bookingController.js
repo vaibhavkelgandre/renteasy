@@ -16,6 +16,8 @@ import {
 } from "../services/bookingService.js";
 import { sendSuccess } from "../utils/response.js";
 import { assertRealImages } from "../middlewares/uploadMiddleware.js";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 /**
  * POST /api/bookings
@@ -135,9 +137,14 @@ export async function getBookingPhotoFile(req, res, next) {
     // business and a real filename would leak whatever the uploader's phone called it.
     res.set("Content-Disposition", 'inline; filename="photo"');
 
-    const { Readable } = await import("node:stream");
-    Readable.fromWeb(stream).pipe(res);
+    // `pipeline`, never bare `.pipe()` — see the identical comment on
+    // getMessageAttachment (messageController.js), which has the full reasoning.
+    await pipeline(Readable.fromWeb(stream), res);
   } catch (error) {
+    if (res.headersSent) {
+      res.destroy(error);
+      return;
+    }
     next(error);
   }
 }

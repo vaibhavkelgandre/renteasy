@@ -22,7 +22,9 @@ if (env.databaseUrl) {
     connectionString: env.databaseUrl,
     // SSL only where it is actually needed. Managed providers require it; a local
     // Postgres does not offer it, and demanding it locally fails the handshake.
-    ssl: env.isProduction ? { rejectUnauthorized: false } : false,
+    // env.dbSsl verifies the server certificate (rejectUnauthorized: true) — see its
+    // own comment in env.js for why `false` there was a silent man-in-the-middle gap.
+    ssl: env.dbSsl,
     max: 10,
     idleTimeoutMillis: 30_000,
     // Fail a connection attempt rather than hanging a request forever.
@@ -61,6 +63,56 @@ export async function query(text, params = []) {
     throw new Error("No database configured. Set DATABASE_URL.");
   }
   return pool.query(text, params);
+}
+
+/**
+ * Runs a callback against ONE client wrapped in a transaction — committed on
+ * success, rolled back on any error.
+ *
+ * WHY THIS EXISTS: `query()` above asks the POOL for a connection, and the pool is
+ * free to hand two calls to two different physical connections. That is fine for an
+ * isolated statement and wrong the moment two writes must succeed or fail together —
+ * a booking's status change and the audit event that records it (bookingService.js),
+ * for instance. Without this, a crash between the two leaves a status change with no
+ * event, and a trail with holes is not evidence.
+ *
+ * EVERY REPOSITORY FUNCTION CALLED INSIDE `fn` MUST BE PASSED THE `exec` ARGUMENT IT
+ * RECEIVES — never the module's own `query()`. `exec` is bound to this transaction's
+ * one client; falling back to `query()` would run that statement on a DIFFERENT
+ * connection, entirely outside the transaction, and — because Postgres isolates
+ * uncommitted writes to the session that made them — a read done that way would not
+ * even see the write this same transaction just made.
+ *
+ * @template T
+ * @param {(exec: (text: string, params?: unknown[]) => Promise<pg.QueryResult>) => Promise<T>} fn
+ *        Receives a `query()`-shaped function bound to the transaction's client.
+ * @returns {Promise<T>} Whatever `fn` returns.
+ * @throws {Error} If no database is configured, or `fn` throws — rolled back first,
+ *         then the original error is rethrown unchanged, so callers can still branch
+ *         on `error.code` exactly as they would around a plain `query()` call.
+ */
+export async function withTransaction(fn) {
+  if (!pool) {
+    throw new Error("No database configured. Set DATABASE_URL.");
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn((text, params = []) => client.query(text, params));
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    // Swallowed deliberately: a ROLLBACK that itself fails (the connection already
+    // dropped) must not replace the original error with a less useful one — the
+    // caller needs to see and act on what actually went wrong.
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    // ALWAYS, on every path — a client never returned to the pool is a slow leak
+    // that eventually exhausts `max` and hangs every future request.
+    client.release();
+  }
 }
 
 /**

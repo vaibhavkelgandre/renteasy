@@ -8,6 +8,12 @@
  * only be checked next to the data — `loadOwnListing` in the service does it, once, for
  * every mutating path. A `requireOwner` middleware here would need to load the listing
  * to answer, then the service would load it again.
+ *
+ * ONE DELIBERATE EXCEPTION: the photo upload route below runs `requireListingOwner`
+ * (middlewares/resourceAccessMiddleware.js) ahead of multer, specifically so a
+ * non-owner's upload is refused before the bytes are buffered into memory rather than
+ * after — see that middleware's own header comment for why the double load is worth
+ * it there and nowhere else in this file.
  */
 
 import { Router } from "express";
@@ -47,6 +53,8 @@ import {
 import { validateBody, validateParams, validateQuery } from "../validators/validate.js";
 import { requireAuth, requireVerifiedEmail, attachUserIfPresent } from "../middlewares/authMiddleware.js";
 import { acceptPhotos, handleUploadErrors } from "../middlewares/uploadMiddleware.js";
+import { requireListingOwner } from "../middlewares/resourceAccessMiddleware.js";
+import { uploadLimiter } from "../middlewares/rateLimiter.js";
 
 const router = Router();
 
@@ -164,6 +172,10 @@ router.post(
   requireAuth,
   requireVerifiedEmail,
   withListingId,
+  requireListingOwner,
+  // Shared budget with the booking-photo and message-attachment routes — see
+  // uploadLimiter's own comment in rateLimiter.js.
+  uploadLimiter,
   acceptPhotos,
   handleUploadErrors,
   postPhotos

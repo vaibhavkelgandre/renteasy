@@ -19,8 +19,13 @@
  * server.js owns listening. This file owns what the app IS.
  */
 
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
+import { env } from "./config/env.js";
 import { healthRoutes } from "./routes/healthRoutes.js";
 import { authRoutes } from "./routes/authRoutes.js";
 import { profileRoutes, publicUserRoutes } from "./routes/profileRoutes.js";
@@ -41,6 +46,41 @@ app.set("trust proxy", 1);
 // Never advertise the framework. Free information for someone scanning for known
 // Express vulnerabilities, and no benefit to anyone else.
 app.disable("x-powered-by");
+
+// Security headers. Helmet's defaults (HSTS, X-Content-Type-Options: nosniff,
+// X-Frame-Options, a locked-down CSP, Referrer-Policy, etc.) are a reasonable
+// baseline on their own — the only thing that has to be TAUGHT here is the handful of
+// origins this app genuinely talks to, and app.js is the one place that already
+// knows the deploy is single-origin (see the static-client block below).
+//
+// Three directives are widened past helmet's "same-origin only" default, each for a
+// specific, load-bearing reason:
+//   - imgSrc: public listing photos are served straight from Cloudinary
+//     (config/cloudinary.js's `publicDeliveryUrl`, res.cloudinary.com), never proxied
+//     through this app the way private booking/message photos are.
+//   - styleSrc / fontSrc: client/index.html loads the one typeface (Manrope) from
+//     Google Fonts — the stylesheet from fonts.googleapis.com, the font files
+//     themselves from fonts.gstatic.com.
+// connectSrc is left at the helmet default ('self') deliberately: the API and the
+// Socket.IO handshake are same-origin by design (see app.js's own header comment on
+// why one service serves both), so there is nothing else for the client to reach.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "img-src": ["'self'", "data:", "https://res.cloudinary.com"],
+        "style-src": ["'self'", "https://fonts.googleapis.com"],
+        "font-src": ["'self'", "https://fonts.gstatic.com"],
+      },
+    },
+    // require-corp would block the cross-origin Google Fonts stylesheet/files above
+    // unless Google itself sends a matching Cross-Origin-Resource-Policy header — not
+    // something this app controls, and not worth the fragility for a font. Nothing
+    // here needs SharedArrayBuffer or the other isolation guarantees COEP exists for.
+    crossOriginEmbedderPolicy: false,
+  })
+);
 
 // Parse JSON request bodies. The size limit is deliberate: the default is 100kb, and
 // nothing this API accepts as JSON is anywhere near that. File uploads (step 7) use
@@ -70,6 +110,72 @@ app.use("/api/listings", listingRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/reviews", reviewRoutes);
+
+// ---- The built client ----
+//
+// ONE SERVICE SERVES BOTH, and that is a deployment decision this application cannot
+// opt out of. The client hardcodes `BASE = "/api"` and opens its socket with `io()`
+// against the page's own origin; there is no VITE_API_URL and no CORS middleware
+// anywhere, and the session cookie is `SameSite=Strict`. So the frontend and the API
+// MUST be same-origin. Serving the build from here makes that true by construction,
+// rather than by a proxy rule somebody has to get right.
+//
+// It is also what keeps the WebSocket working on Render: a web service supports an
+// Upgrade natively, while a static site's rewrite rules do not proxy one — Socket.IO
+// would silently fall back to long-polling and the transport would not be a socket at
+// all.
+//
+// MOUNTED AFTER THE API, BEFORE THE 404, and both halves of that matter: earlier and
+// a stray file could shadow an endpoint; later and every unmatched path would already
+// have been answered with the JSON 404 below.
+const clientDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/dist");
+const clientIndex = path.join(clientDist, "index.html");
+
+// Absent in development (Vite serves the client) and skipped under test, so the
+// suite's 404 behaviour is exactly what it always was. Keyed on the build EXISTING
+// rather than on NODE_ENV, so `npm start` after a local build behaves like production.
+if (!env.isTest && existsSync(clientIndex)) {
+  app.use(
+    express.static(clientDist, {
+      // The SPA fallback below owns "/", so static must not answer it and skip the
+      // no-cache header that fallback needs.
+      index: false,
+      setHeaders(res, filePath) {
+        // Vite fingerprints everything under assets/, so those filenames change
+        // whenever their contents do and can be cached for a year. Everything else
+        // served from here keeps a stable name (favicon and friends) and must be
+        // revalidated instead.
+        const fingerprinted = filePath.includes(`${path.sep}assets${path.sep}`);
+        res.setHeader(
+          "Cache-Control",
+          fingerprinted ? "public, max-age=31536000, immutable" : "no-cache"
+        );
+      },
+    })
+  );
+
+  app.use((req, res, next) => {
+    // An unmatched /api path is a missing ENDPOINT and must answer the JSON 404, not
+    // a page. Without this, a typo'd endpoint would return index.html with a 200 and
+    // the client would fail on "Unexpected token <" instead of a readable error.
+    if (req.path.startsWith("/api")) return next();
+
+    // Every other path is a client route — /listings/:id, /bookings/:id — which the
+    // router resolves in the browser. The server cannot know them and does not need
+    // to.
+    //
+    // INDEX.HTML MUST NOT BE CACHED WITHOUT REVALIDATION: it is the one file whose
+    // name never changes, so a stale copy after a deploy points the browser at
+    // fingerprinted bundles that no longer exist. `sendFile` gives exactly that —
+    // `public, max-age=0`, which permits caching but forces a revalidation on every
+    // load — so nothing extra is needed here.
+    //
+    // Verified rather than assumed, because it is not obvious: `sendFile` sets that
+    // header ITSELF and overrides anything set beforehand. Both `res.setHeader` and
+    // `{ cacheControl: false }` were tried and neither changed the response.
+    res.sendFile(clientIndex);
+  });
+}
 
 // ---- 404 ----
 // Reached only when no route above matched. Must come after every route and before

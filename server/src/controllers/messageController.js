@@ -15,6 +15,9 @@ import {
   listThreads,
 } from "../services/messageService.js";
 import { sendSuccess } from "../utils/response.js";
+import { assertRealImages } from "../middlewares/uploadMiddleware.js";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 /**
  * GET /api/bookings/messages/threads — the inbox.
@@ -43,6 +46,14 @@ export async function getMessages(req, res, next) {
 /** POST /api/bookings/:id/messages — JSON, or multipart with one `attachment`. */
 export async function postMessage(req, res, next) {
   try {
+    // Same guard the listing- and booking-photo controllers already apply, and for
+    // the identical reason: multer's own `fileFilter` only ever sees the
+    // client-declared mimetype and filename, both attacker-supplied. This sniffs the
+    // real bytes and stamps `file.detectedMimeType`, which sendMessage/cloudinary
+    // storage use instead of trusting the upload. Skipped entirely when there is no
+    // file — `assertRealImages` takes an array, and a plain text message has none.
+    if (req.file) assertRealImages([req.file]);
+
     const message = await sendMessage(req.validatedParams.id, req.user, {
       body: req.body?.body,
       // `req.file` is multer's single-file shape; absent for a plain text message.
@@ -108,9 +119,22 @@ export async function getMessageAttachment(req, res, next) {
     // would leak whatever the uploader's phone called it.
     res.set("Content-Disposition", 'inline; filename="attachment"');
 
-    const { Readable } = await import("node:stream");
-    Readable.fromWeb(stream).pipe(res);
+    // `pipeline`, never bare `.pipe()`. `.pipe()` only forwards DATA — an error on
+    // either stream (Cloudinary resetting mid-transfer, the client disconnecting)
+    // fires an `'error'` event with no listener, which Node treats as an uncaught
+    // exception and kills the whole process. `pipeline` forwards errors from either
+    // side into this `await`, and destroys both streams on failure so a dropped
+    // client doesn't leak the still-open upstream response body.
+    await pipeline(Readable.fromWeb(stream), res);
   } catch (error) {
+    // If bytes have already reached the client, the response is no longer ours to
+    // reshape into a JSON error envelope — `res.status().json()` would itself throw
+    // trying to set a header after Node has already sent the head. Ending the
+    // connection is the only honest option left at that point.
+    if (res.headersSent) {
+      res.destroy(error);
+      return;
+    }
     next(error);
   }
 }

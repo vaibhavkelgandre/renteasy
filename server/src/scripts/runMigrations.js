@@ -142,7 +142,10 @@ async function migrate({ statusOnly = false } = {}) {
   // that change stays a one-liner.
   const client = new pg.Client({
     connectionString: env.databaseUrl,
-    ssl: env.isProduction ? { rejectUnauthorized: false } : false,
+    // env.dbSsl (config/env.js) is what both this runner and the app's own pool read —
+    // set DB_SSL=true when migrating a hosted database (e.g. Neon) from a laptop where
+    // NODE_ENV stays "development".
+    ssl: env.dbSsl,
   });
 
   // Connect inside a try. Without this, an unreachable database, a wrong password or

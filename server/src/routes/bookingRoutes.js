@@ -52,6 +52,8 @@ import {
   acceptMessageAttachment,
   handleUploadErrors,
 } from "../middlewares/uploadMiddleware.js";
+import { requireBookingParty } from "../middlewares/resourceAccessMiddleware.js";
+import { uploadLimiter, limitUploadsOnlyIfAttached } from "../middlewares/rateLimiter.js";
 
 const router = Router();
 
@@ -92,10 +94,24 @@ router.post("/:id/actions", withBookingId, validateBody(bookingActionSchema), po
  * through a booking that already required it of the renter, and the moment somebody
  * is standing in a doorway photographing a camera is the worst possible time to
  * discover an unrelated account problem.
+ *
+ * `requireBookingParty` sits BEFORE `acceptBookingPhotos` on purpose — see
+ * resourceAccessMiddleware.js. Without it, any signed-in stranger could make the
+ * process buffer up to MAX_PHOTOS_PER_UPLOAD × MAX_PHOTO_BYTES of a stranger's
+ * booking upload into memory before being refused. The service's own
+ * `loadBookingForParty` call still runs too; this only moves the refusal ahead of
+ * the expensive part.
+ *
+ * `uploadLimiter` caps how many uploads one ACCOUNT can make per hour, shared across
+ * this route, the listing-photo route and message attachments (rateLimiter.js) —
+ * bounding total memory/Cloudinary cost regardless of which upload surface an
+ * attacker (or a runaway client) hammers.
  */
 router.post(
   "/:id/photos",
   withBookingId,
+  requireBookingParty,
+  uploadLimiter,
   acceptBookingPhotos,
   handleUploadErrors,
   validateBody(bookingPhotoSchema),
@@ -134,10 +150,17 @@ router.get("/:id/messages", withBookingId, validateQuery(messageQuerySchema), ge
 router.post(
   "/:id/messages",
   withBookingId,
+  // Same reasoning as the photo route above — ahead of the parser, so a stranger's
+  // multipart attachment is never buffered at all rather than buffered then refused.
+  requireBookingParty,
   // Parses multipart when there is a file and passes plain JSON through untouched,
   // so one endpoint serves both a text message and a photo with a caption.
   acceptMessageAttachment,
   handleUploadErrors,
+  // AFTER the parser, and conditional on req.file — this route also carries plain
+  // text messages, which must not compete with photo uploads for uploadLimiter's
+  // budget. See limitUploadsOnlyIfAttached (rateLimiter.js).
+  limitUploadsOnlyIfAttached,
   validateBody(sendMessageSchema),
   postMessage
 );

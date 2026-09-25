@@ -31,6 +31,7 @@ import { validateBody, validateParams, validateQuery } from "../validators/valid
 import { requireAuth } from "../middlewares/authMiddleware.js";
 import { getUserReviews } from "../controllers/reviewController.js";
 import { reviewListQuerySchema } from "../validators/reviewValidator.js";
+import { emailChangeLimiter, passwordRecheckLimiter } from "../middlewares/rateLimiter.js";
 
 const router = Router();
 
@@ -46,15 +47,38 @@ router.patch("/", validateBody(updateProfileSchema), patchMyProfile);
 // Deliberately NOT gated on a verified email. Someone whose address was mistyped at
 // signup is exactly who needs this most, and requireVerifiedEmail here would trap them
 // permanently: unable to confirm the wrong address, and unable to change it.
-router.patch("/email", validateBody(changeEmailSchema), patchMyEmail);
+//
+// Two limiters, both keyed on the caller's account (middlewares/rateLimiter.js):
+// emailChangeLimiter caps how many change requests one account can SEND (each one
+// mails the new address), passwordRecheckLimiter caps how many WRONG passwords one
+// account can submit while a caller holding a stolen session tries to guess it.
+router.patch(
+  "/email",
+  emailChangeLimiter,
+  passwordRecheckLimiter,
+  validateBody(changeEmailSchema),
+  patchMyEmail
+);
 router.delete("/email", deleteMyPendingEmail);
 
-router.patch("/password", validateBody(changePasswordSchema), patchMyPassword);
+// Same passwordRecheckLimiter instance as above and below — one shared budget across
+// all three routes that ask for the current password, not three independent ones.
+router.patch(
+  "/password",
+  passwordRecheckLimiter,
+  validateBody(changePasswordSchema),
+  patchMyPassword
+);
 
 // POST, not DELETE on /profile. DELETE would read as "remove this resource" and imply
 // the row is gone; this is a soft delete with a body (the password confirmation), and
 // DELETE with a body is poorly supported by enough clients to be worth avoiding.
-router.post("/deletion", validateBody(deleteAccountSchema), postAccountDeletion);
+router.post(
+  "/deletion",
+  passwordRecheckLimiter,
+  validateBody(deleteAccountSchema),
+  postAccountDeletion
+);
 
 /**
  * The public read, mounted separately because it is the one route in this file that

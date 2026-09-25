@@ -22,6 +22,9 @@ const JPEG = Buffer.from(
   "base64"
 );
 
+/** Not an image at all, whatever it claims to be called — same fixture as listings.test.js. */
+const NOT_AN_IMAGE = Buffer.from("<?php system($_GET['c']); ?>                    ");
+
 const NEXT_MONTH = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 const iso = (days) => new Date(NEXT_MONTH.getTime() + days * 86_400_000).toISOString();
 
@@ -235,6 +238,26 @@ describe("attachments and contact sharing", () => {
     );
     expect(file.status).toBe(200);
     expect(file.headers["cache-control"]).toMatch(/private/);
+  });
+
+  it("REJECTS a file that is not really an image, however it is named", async () => {
+    // Same guard listings.test.js already pins for listing photos — this endpoint had
+    // no such check at all until it was added: multer's own fileFilter only ever sees
+    // the client-declared mimetype and extension, both attacker-supplied, so a
+    // renamed script previously sailed straight through to Cloudinary.
+    const { renter, bookingId } = await thread();
+
+    const sent = await renter.agent
+      .post(`/api/bookings/${bookingId}/messages`)
+      .attach("attachment", NOT_AN_IMAGE, { filename: "lens.jpg", contentType: "image/jpeg" });
+
+    expect(sent.status).toBe(400);
+    expect(sent.body.message).toMatch(/not a .*image/i);
+
+    // And no message was created at all — a rejected attachment must not leave a
+    // half-sent message in the thread.
+    const { messages } = await read(renter.agent, bookingId);
+    expect(messages).toHaveLength(0);
   });
 
   it("shares a phone number as a message, not as a hidden field", async () => {
