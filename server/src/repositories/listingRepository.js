@@ -113,14 +113,21 @@ export async function insertListing({
  * see their own draft; a stranger may not. Filtering here would make the owner's view
  * impossible to express without a second query.
  *
+ * `owner_status` is included for the same reason `owner_id` already was — so the
+ * caller can decide what a non-ACTIVE owner means to it (listingService.js's public
+ * reads treat it the same as a draft: absent to everyone). Joined here rather than
+ * queried separately, since every caller of this function needs it now.
+ *
  * @param {string} id Must already be shape-checked as a UUID.
  * @returns {Promise<object | null>}
  * @throws {Error} On a database failure.
  */
 export async function findListingById(id) {
   const { rows } = await query(
-    `SELECT ${WITH_CATEGORY}
-       FROM listings l JOIN categories c ON c.id = l.category_id
+    `SELECT ${WITH_CATEGORY}, o.status AS owner_status
+       FROM listings l
+       JOIN categories c ON c.id = l.category_id
+       JOIN users o ON o.id = l.owner_id
       WHERE l.id = $1`,
     [id]
   );
@@ -233,6 +240,37 @@ export async function updateListingStatus(id, status) {
     [id, status]
   );
   return rows[0] ?? null;
+}
+
+/**
+ * Unpublishes every PUBLISHED listing an owner has, in one statement — B10's fix for
+ * account deletion (profileService.js's `deleteOwnAccount`), which passes
+ * `withTransaction`'s callback so this commits atomically alongside the user's own
+ * soft-delete.
+ *
+ * UNPUBLISHED, never DELETED — same reasoning as `removeListing` refusing to hard-
+ * delete a listing with bookings against it: those bookings are the other party's
+ * record of what they rented, and deleting the listing would leave that record
+ * pointing at nothing. Unpublishing already hides it from browse and refuses new
+ * booking requests (FR-109), which is everything this needs to do.
+ *
+ * `WHERE status = 'PUBLISHED'` only — a DRAFT has nothing to hide from anyone but
+ * its owner, and an already-UNPUBLISHED listing needs no `updated_at` bump for a
+ * change that did not happen to it.
+ *
+ * @param {string} ownerId
+ * @param {(text: string, params?: unknown[]) => Promise<import("pg").QueryResult>} [exec]
+ *        Defaults to the module's own `query`.
+ * @returns {Promise<number>} How many listings were unpublished.
+ * @throws {Error} On a database failure.
+ */
+export async function unpublishAllListingsForOwner(ownerId, exec = query) {
+  const { rowCount } = await exec(
+    `UPDATE listings SET status = 'UNPUBLISHED', updated_at = now()
+      WHERE owner_id = $1 AND status = 'PUBLISHED'`,
+    [ownerId]
+  );
+  return rowCount;
 }
 
 /**
@@ -418,7 +456,13 @@ function buildBrowseWhere(filters) {
   // FR-309, and it is FIRST so it can never be lost among the optional conditions.
   // Drafts and unpublished listings must never appear in a browse result — a draft is
   // somebody's unfinished work and an unpublished listing was deliberately withdrawn.
-  const conditions = ["l.status = 'PUBLISHED'"];
+  //
+  // `o.status = 'ACTIVE'` right beside it, same reasoning: a deleted account is soft
+  // deleted (the row survives — `deleted_at`/`status = 'DELETED'`, never a hard
+  // DELETE), so without this a browse result kept offering a listing whose owner no
+  // longer has an account to fulfil it from. Requires `findPublishedListings` to join
+  // `users o` — see there.
+  const conditions = ["l.status = 'PUBLISHED'", "o.status = 'ACTIVE'"];
   const params = [];
 
   /**
@@ -455,7 +499,7 @@ function buildBrowseWhere(filters) {
     // ILIKE with wrapping wildcards, which is what the trigram indexes from migration
     // 005 exist to serve. `%` and `_` in the term are escaped so a user typing "50%
     // off" searches for that text rather than matching everything.
-    params.push(`%${q.replace(/[\%_]/g, (ch) => `\${ch}`)}%`);
+    params.push(`%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`);
     conditions.push(`(l.title ILIKE $${params.length} OR l.description ILIKE $${params.length})`);
   }
 
@@ -567,7 +611,9 @@ export async function findPublishedListings({ filters = {}, sort, limit, offset 
             count(*) OVER () AS total_count,
             (SELECT p.storage_id FROM listing_photos p
               WHERE p.listing_id = l.id ORDER BY p.sort_order LIMIT 1) AS cover_storage_id
-       FROM listings l JOIN categories c ON c.id = l.category_id
+       FROM listings l
+       JOIN categories c ON c.id = l.category_id
+       JOIN users o ON o.id = l.owner_id
       WHERE ${clause}
       ORDER BY ${order}
       LIMIT $${params.length - 1} OFFSET $${params.length}`,

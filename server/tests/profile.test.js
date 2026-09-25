@@ -24,6 +24,32 @@ import {
 
 const NEW_PASSWORD = "a-completely-different-password";
 
+const JPEG = Buffer.from(
+  "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a" +
+    "HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA" +
+    "AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==",
+  "base64"
+);
+const NEXT_MONTH = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+const iso = (days) => new Date(NEXT_MONTH.getTime() + days * 86_400_000).toISOString();
+
+/** Creates, photographs and publishes a listing, returning its id — for B10's tests. */
+async function publishedListing(agent) {
+  const created = await agent.post("/api/listings").send({
+    title: "Canon EOS R6",
+    description: "Full-frame mirrorless with two batteries.",
+    category: "cameras",
+    condition: "GOOD",
+    dailyRatePaise: 80_000,
+    locality: "Kothrud",
+    city: "Pune",
+  });
+  const id = created.body.data.listing.id;
+  await agent.post(`/api/listings/${id}/photos`).attach("photos", JPEG, "p.jpg");
+  await agent.post(`/api/listings/${id}/publish`);
+  return id;
+}
+
 /** Reads a user row straight from the database. */
 async function readUser(email) {
   const { rows } = await query(
@@ -223,6 +249,28 @@ describe("PATCH /api/profile/email — nothing moves until the new address is pr
       .post("/api/auth/login")
       .send({ email: wanted, password: TEST_PASSWORD });
     expect(newSignIn.status).toBe(200);
+  });
+
+  it("confirming the change signs out every existing session, including the one that requested it", async () => {
+    const { agent } = await verifiedUser(app);
+    const wanted = nextEmail();
+
+    await agent.patch("/api/profile/email").send({ newEmail: wanted, currentPassword: TEST_PASSWORD });
+    const token = verificationTokenFor(wanted);
+
+    // The account that can recover this address just changed — anyone holding a
+    // STOLEN session but not the password (see confirmEmailChange's own comment on
+    // why this is a deliberate, useful side effect) is locked out of the very
+    // session they used to complete a takeover. It applies even to the legitimate
+    // owner's own agent, which is the trade-off being pinned here.
+    const before = await agent.get("/api/profile");
+    expect(before.status).toBe(200);
+
+    const confirm = await request(app).post("/api/auth/verify").send({ token });
+    expect(confirm.status).toBe(200);
+
+    const after = await agent.get("/api/profile");
+    expect(after.status).toBe(401);
   });
 
   it("kills the previous link when a change is requested again", async () => {
@@ -451,6 +499,86 @@ describe("POST /api/profile/deletion", () => {
     expect(again.status).toBe(202);
     expect(getOutbox()).toHaveLength(0);
     expect((await readUser(email)).status).toBe("DELETED");
+  });
+
+  it("unpublishes every PUBLISHED listing atomically alongside the delete — B10", async () => {
+    const { agent, email } = await verifiedUser(app);
+    const id = await publishedListing(agent);
+
+    const response = await agent
+      .post("/api/profile/deletion")
+      .send({ currentPassword: TEST_PASSWORD });
+    expect(response.status).toBe(200);
+
+    expect((await readUser(email)).status).toBe("DELETED");
+
+    const { rows } = await query(`SELECT status FROM listings WHERE id = $1`, [id]);
+    expect(rows[0].status).toBe("UNPUBLISHED");
+
+    // And it is genuinely gone from browse, not just flagged.
+    const browsed = await request(app).get("/api/listings");
+    expect(browsed.body.data.listings.map((l) => l.id)).not.toContain(id);
+  });
+
+  it("REFUSES while the caller has an open booking as OWNER — B10", async () => {
+    const owner = await verifiedUser(app);
+    const renter = await verifiedUser(app);
+    const listingId = await publishedListing(owner.agent);
+
+    const booking = await renter.agent
+      .post("/api/bookings")
+      .send({ listingId, startsAt: iso(0), endsAt: iso(3) });
+    expect(booking.status).toBe(201);
+
+    const response = await owner.agent
+      .post("/api/profile/deletion")
+      .send({ currentPassword: TEST_PASSWORD });
+
+    expect(response.status).toBe(409);
+    expect(response.body.message).toMatch(/open bookings/i);
+    expect((await readUser(owner.email)).status).toBe("ACTIVE");
+
+    // Nothing moved — the refusal is BEFORE any write, not a rolled-back one that
+    // happened to look clean from outside.
+    const { rows } = await query(`SELECT status FROM listings WHERE id = $1`, [listingId]);
+    expect(rows[0].status).toBe("PUBLISHED");
+  });
+
+  it("REFUSES while the caller has an open booking as RENTER — B10", async () => {
+    const owner = await verifiedUser(app);
+    const renter = await verifiedUser(app);
+    const listingId = await publishedListing(owner.agent);
+
+    const booking = await renter.agent
+      .post("/api/bookings")
+      .send({ listingId, startsAt: iso(0), endsAt: iso(3) });
+    expect(booking.status).toBe(201);
+
+    const response = await renter.agent
+      .post("/api/profile/deletion")
+      .send({ currentPassword: TEST_PASSWORD });
+
+    expect(response.status).toBe(409);
+    expect(response.body.message).toMatch(/open bookings/i);
+    expect((await readUser(renter.email)).status).toBe("ACTIVE");
+  });
+
+  it("allows deletion once the blocking booking reaches a TERMINAL state", async () => {
+    const owner = await verifiedUser(app);
+    const renter = await verifiedUser(app);
+    const listingId = await publishedListing(owner.agent);
+
+    const booking = await renter.agent
+      .post("/api/bookings")
+      .send({ listingId, startsAt: iso(0), endsAt: iso(3) });
+    const bookingId = booking.body.data.booking.id;
+
+    await owner.agent.post(`/api/bookings/${bookingId}/actions`).send({ action: "DECLINE" });
+
+    const response = await owner.agent
+      .post("/api/profile/deletion")
+      .send({ currentPassword: TEST_PASSWORD });
+    expect(response.status).toBe(200);
   });
 });
 

@@ -1,9 +1,17 @@
 /**
  * Bookings and their event trail. The only place SQL touching those tables lives.
+ *
+ * FOUR FUNCTIONS BELOW (`insertBooking`, `findBookingById`, `updateBookingStatus`,
+ * `insertBookingEvent`) take an OPTIONAL trailing `exec` parameter, defaulting to the
+ * module's own `query`. Pass the callback `withTransaction` (config/db.js) hands you
+ * to run any of them as part of one atomic unit instead of its own standalone
+ * statement — bookingService.js's `requestBooking`/`actOnBooking` are why this
+ * exists: a booking's status change and the audit event recording it must both
+ * happen or neither should.
  */
 
 import { query } from "../config/db.js";
-import { DATES_HELD_STATUSES } from "../services/bookingStateMachine.js";
+import { DATES_HELD_STATUSES, TERMINAL_STATES } from "../services/bookingStateMachine.js";
 
 /**
  * The columns any caller may see, with the listing and the parties joined on.
@@ -36,20 +44,19 @@ const FROM_BOOKINGS = `FROM bookings b JOIN listings l ON l.id = b.listing_id`;
  * that is what makes FR-112 hold when the owner edits their rate card tomorrow.
  *
  * @param {object} input
+ * @param {(text: string, params?: unknown[]) => Promise<import("pg").QueryResult>} [exec]
+ *        Defaults to the module's own `query`. Pass `withTransaction`'s callback to
+ *        run this as part of a larger atomic unit — see the file header.
  * @returns {Promise<object>} The created booking's id and status.
  * @throws {Error} With `code === "23P01"` if the exclusion constraint refuses it. Only
  *         reachable on a status that holds dates, so not on this path — documented
  *         because the same error is very much reachable from `updateStatus`.
  */
-export async function insertBooking({
-  listingId,
-  renterId,
-  startsAt,
-  endsAt,
-  quote,
-  renterMessage = null,
-}) {
-  const { rows } = await query(
+export async function insertBooking(
+  { listingId, renterId, startsAt, endsAt, quote, renterMessage = null },
+  exec = query
+) {
+  const { rows } = await exec(
     `INSERT INTO bookings (
        listing_id, renter_id, starts_at, ends_at,
        rent_paise, tax_paise, deposit_paise, commission_paise,
@@ -79,11 +86,15 @@ export async function insertBooking({
  * Finds one booking, with its listing and owner.
  *
  * @param {string} id Must already be shape-checked as a UUID.
+ * @param {(text: string, params?: unknown[]) => Promise<import("pg").QueryResult>} [exec]
+ *        Defaults to the module's own `query` — see the file header. `updateBookingStatus`
+ *        passes its OWN `exec` through here, which matters: a read on a different
+ *        connection would not see this transaction's own still-uncommitted write.
  * @returns {Promise<object | null>}
  * @throws {Error} On a database failure.
  */
-export async function findBookingById(id) {
-  const { rows } = await query(`SELECT ${BOOKING_COLUMNS} ${FROM_BOOKINGS} WHERE b.id = $1`, [id]);
+export async function findBookingById(id, exec = query) {
+  const { rows } = await exec(`SELECT ${BOOKING_COLUMNS} ${FROM_BOOKINGS} WHERE b.id = $1`, [id]);
   return rows[0] ?? null;
 }
 
@@ -97,20 +108,24 @@ export async function findBookingById(id) {
  * @param {string} id
  * @param {string} toStatus
  * @param {string} fromStatus The status the caller believes it is in.
+ * @param {(text: string, params?: unknown[]) => Promise<import("pg").QueryResult>} [exec]
+ *        Defaults to the module's own `query` — see the file header. `actOnBooking`
+ *        always passes `withTransaction`'s callback, so this write and the
+ *        `insertBookingEvent` that follows commit or roll back together.
  * @returns {Promise<object | null>} The updated booking, or null if it had moved on.
  * @throws {Error} With `code === "23P01"` when the exclusion constraint refuses — the
  *         caller MUST handle this. It is how a second accept for the same dates is
  *         stopped, and it is not an application bug.
  */
-export async function updateBookingStatus(id, toStatus, fromStatus) {
-  const { rows } = await query(
+export async function updateBookingStatus(id, toStatus, fromStatus, exec = query) {
+  const { rows } = await exec(
     `UPDATE bookings SET status = $2, updated_at = now()
       WHERE id = $1 AND status = $3
       RETURNING id`,
     [id, toStatus, fromStatus]
   );
   if (rows.length === 0) return null;
-  return findBookingById(id);
+  return findBookingById(id, exec);
 }
 
 /**
@@ -120,11 +135,16 @@ export async function updateBookingStatus(id, toStatus, fromStatus) {
  * trigger on the table that refuses both.
  *
  * @param {object} input
+ * @param {(text: string, params?: unknown[]) => Promise<import("pg").QueryResult>} [exec]
+ *        Defaults to the module's own `query` — see the file header.
  * @returns {Promise<object>}
  * @throws {Error} On a database failure.
  */
-export async function insertBookingEvent({ bookingId, actorId = null, fromStatus = null, toStatus, comment = null }) {
-  const { rows } = await query(
+export async function insertBookingEvent(
+  { bookingId, actorId = null, fromStatus = null, toStatus, comment = null },
+  exec = query
+) {
+  const { rows } = await exec(
     `INSERT INTO booking_events (booking_id, actor_id, from_status, to_status, comment)
      VALUES ($1,$2,$3,$4,$5)
      RETURNING id, actor_id, from_status, to_status, comment, created_at`,
@@ -179,6 +199,32 @@ export async function findBookingsAsOwner(ownerId) {
     `SELECT ${BOOKING_COLUMNS} ${FROM_BOOKINGS}
       WHERE l.owner_id = $1 ORDER BY b.created_at DESC`,
     [ownerId]
+  );
+  return rows;
+}
+
+/**
+ * Every NON-TERMINAL booking a user is party to, either side — B10's guard for
+ * account deletion (profileService.js's `deleteOwnAccount`).
+ *
+ * `status <> ALL(TERMINAL_STATES)` rather than an allowlist of the live ones: a new
+ * live status added to the state machine later is covered automatically, where an
+ * allowlist would silently miss it until someone remembered to update this too.
+ *
+ * @param {string} userId
+ * @returns {Promise<object[]>} `{ id, status, role: "renter"|"owner", listing_title }`
+ * @throws {Error} On a database failure.
+ */
+export async function findOpenBookingsInvolving(userId) {
+  const { rows } = await query(
+    `SELECT b.id, b.status, l.title AS listing_title,
+            CASE WHEN b.renter_id = $1 THEN 'renter' ELSE 'owner' END AS role
+       FROM bookings b
+       JOIN listings l ON l.id = b.listing_id
+      WHERE (b.renter_id = $1 OR l.owner_id = $1)
+        AND b.status <> ALL($2::text[])
+      ORDER BY b.created_at`,
+    [userId, TERMINAL_STATES]
   );
   return rows;
 }

@@ -11,6 +11,7 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { app } from "../src/app.js";
+import { query } from "../src/config/db.js";
 import { verifiedUser } from "./helpers/factories.js";
 
 const JPEG = Buffer.from(
@@ -147,6 +148,25 @@ describe("FR-309 — nothing unpublished ever appears", () => {
 
     await agent.post(`/api/listings/${id}/unpublish`);
     expect((await browse()).body.data.total).toBe(0);
+  });
+
+  it("hides a PUBLISHED listing whose owner is no longer ACTIVE — B10", async () => {
+    // `SUSPENDED` has no admin endpoint yet (see profile.test.js's own note on the
+    // account-deletion path being the only reachable one today), so this simulates
+    // it directly at the database, the same way sockets.test.js already does to
+    // exercise a state the API cannot currently produce. The listing itself is
+    // untouched — still genuinely PUBLISHED — which is the point: status alone is
+    // not enough once the owner behind it is gone.
+    const { agent, email } = await verifiedUser(app);
+    const id = await publish(agent);
+
+    expect((await browse()).body.data.total).toBe(1);
+
+    await query(`UPDATE users SET status = 'SUSPENDED' WHERE email = $1`, [email]);
+
+    const response = await browse();
+    expect(response.body.data.total).toBe(0);
+    expect(response.body.data.listings.map((l) => l.id)).not.toContain(id);
   });
 });
 

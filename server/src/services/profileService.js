@@ -11,7 +11,8 @@
 
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { issueToken } from "../utils/secureToken.js";
-import { badRequest, notFound, unauthorized } from "../utils/errors.js";
+import { badRequest, conflict, notFound, unauthorized } from "../utils/errors.js";
+import { withTransaction } from "../config/db.js";
 import {
   findUserById,
   findUserByEmail,
@@ -25,6 +26,8 @@ import {
 } from "../repositories/userRepository.js";
 import { issueVerificationToken } from "../repositories/verificationTokenRepository.js";
 import { invalidateResetTokensForUser } from "../repositories/passwordResetTokenRepository.js";
+import { findOpenBookingsInvolving } from "../repositories/bookingRepository.js";
+import { unpublishAllListingsForOwner } from "../repositories/listingRepository.js";
 import { sendVerificationEmail } from "./mailService.js";
 
 /**
@@ -157,7 +160,9 @@ export async function cancelEmailChange(user) {
  * @param {object} input
  * @param {string} input.currentPassword
  * @param {string} input.newPassword
- * @returns {Promise<void>}
+ * @returns {Promise<string>} The new `session_epoch` — `patchMyPassword`
+ *          (profileController.js) needs this exact value to reissue the caller's own
+ *          cookie embedding it. See `updatePasswordHash`'s own comment.
  * @throws {AppError} 401 for a wrong current password, 400 if the new one matches it.
  */
 export async function changePassword(user, { currentPassword, newPassword }) {
@@ -170,13 +175,15 @@ export async function changePassword(user, { currentPassword, newPassword }) {
   }
 
   const passwordHash = await hashPassword(newPassword);
-  const updated = await updatePasswordHash(user.id, passwordHash);
-  if (!updated) throw notFound("Account not found");
+  const sessionEpoch = await updatePasswordHash(user.id, passwordHash);
+  if (!sessionEpoch) throw notFound("Account not found");
 
   // Any reset link already in an inbox is now a way back into an account whose owner
   // has just deliberately changed its password. Kill it: the most likely reason
   // somebody changes a password is that they think someone else has it.
   await invalidateResetTokensForUser(user.id);
+
+  return sessionEpoch;
 }
 
 /**
@@ -187,16 +194,49 @@ export async function changePassword(user, { currentPassword, newPassword }) {
  * `uq_users_email_lower` and cannot be reused to register again. There is no
  * self-service undo and no admin restore screen.
  *
+ * ⚠️ B10's fix, in two parts:
+ *
+ *   1. REFUSED (409) while the caller has any NON-TERMINAL booking, either side —
+ *      an open commitment as owner (somebody is waiting on them to hand something
+ *      over, or holding it) or as renter (somebody is waiting for it back).
+ *      Deliberately the SAFE, conservative answer rather than auto-cancelling on
+ *      the caller's behalf: this app has no "cancelled by account deletion" audit
+ *      actor, no notification for it, and no state-machine actor role for a system
+ *      action outside the expiry sweep — inventing one is a bigger, separate
+ *      decision than this fix is scoped to make. The message names every blocking
+ *      booking, so the caller has a concrete next step: resolve those first, the
+ *      same way `removeListing` points an owner at "unpublish instead" rather than
+ *      silently doing something on their behalf.
+ *   2. Every PUBLISHED listing the caller owns is unpublished ATOMICALLY alongside
+ *      the soft-delete itself (`withTransaction`) — without this, a crash between
+ *      the two writes could leave an account marked deleted while its listings
+ *      stayed live and bookable, which is the exact gap B10 closes. Only reachable
+ *      once part 1 has already confirmed there is nothing open on any of them, so
+ *      unpublishing here can never strand an in-progress rental.
+ *
  * @param {object} user The session user.
  * @param {object} input
  * @param {string} input.currentPassword
  * @returns {Promise<void>}
- * @throws {AppError} 401 for a wrong password.
+ * @throws {AppError} 401 for a wrong password, 409 while a booking is still open.
  */
 export async function deleteOwnAccount(user, { currentPassword }) {
   await assertPassword(user, currentPassword);
 
-  await softDeleteUser(user.id);
+  const openBookings = await findOpenBookingsInvolving(user.id);
+  if (openBookings.length > 0) {
+    const names = openBookings.map((b) => `"${b.listing_title}" (${b.role}, ${b.status})`);
+    throw conflict(
+      `Your account has open bookings and cannot be deleted yet: ${names.join(", ")}. ` +
+        "Resolve or wait for these to finish first.",
+      { account: "Has open bookings" }
+    );
+  }
+
+  await withTransaction(async (tx) => {
+    await softDeleteUser(user.id, tx);
+    await unpublishAllListingsForOwner(user.id, tx);
+  });
 
   // Whatever is outstanding must not survive the account. A reset link would otherwise
   // still be sitting in an inbox pointing at a deleted account.

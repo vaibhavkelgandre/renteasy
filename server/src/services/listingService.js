@@ -52,12 +52,20 @@ import { findRatingsForListings } from "../repositories/reviewRepository.js";
  *                         unpublished listing — which is exactly the fact a draft is
  *                         for keeping private.
  *
+ * EXPORTED, breaking the "the service loads it once" rule stated in listingRoutes.js's
+ * own header comment — on purpose, and only for `middlewares/resourceAccessMiddleware.js`'s
+ * `requireListingOwner`. That middleware runs BEFORE multer buffers a photo upload into
+ * memory, specifically so a non-owner is refused before the bytes are ever read rather
+ * than after — the service still calls this again itself, so the row is loaded twice
+ * on that one path. That double load is the accepted cost of not letting an
+ * unauthorized upload buffer 40MB in RAM first.
+ *
  * @param {string} id
  * @param {object} actor The session user.
  * @returns {Promise<object>} The listing.
  * @throws {AppError} 404 or 403.
  */
-async function loadOwnListing(id, actor) {
+export async function loadOwnListing(id, actor) {
   const listing = await findListingById(id);
   if (!listing) throw notFound("Listing not found");
 
@@ -151,6 +159,40 @@ export async function listOwnListings(actor) {
 }
 
 /**
+ * Loads a listing for a PUBLIC-FACING read — the shared rule behind `getListing`,
+ * `quoteListing` and `getAvailability`, extracted so the three cannot drift into
+ * three slightly different visibility rules for the same thing.
+ *
+ * A DRAFT or UNPUBLISHED listing is visible ONLY to its owner, and answers 404 to
+ * everyone else — including signed-out visitors. Not 403: a stranger has no more
+ * reason to learn that an id belongs to somebody's unpublished listing than to learn
+ * it belongs to nothing at all.
+ *
+ * A listing whose owner is no longer ACTIVE (deleted, suspended) is treated as
+ * absent for EVERYONE, unconditionally — B10's fix. There is deliberately no
+ * `isOwner` carve-out here the way there is for DRAFT: an owner whose own account is
+ * not ACTIVE cannot be signed in as themselves at all (`requireAuth` already refuses
+ * that), so the carve-out would never fire in practice — making it unconditional
+ * means that stays true even if `requireAuth`'s own rule ever changes, rather than
+ * silently depending on it.
+ *
+ * @param {string} id
+ * @param {object|null} actor The session user, or null for a visitor.
+ * @returns {Promise<{ listing: object, isOwner: boolean }>}
+ * @throws {AppError} 404.
+ */
+async function loadListingForPublic(id, actor) {
+  const listing = await findListingById(id);
+  if (!listing) throw notFound("Listing not found");
+
+  const isOwner = Boolean(actor && listing.owner_id === actor.id);
+  if (listing.status !== "PUBLISHED" && !isOwner) throw notFound("Listing not found");
+  if (listing.owner_status !== "ACTIVE") throw notFound("Listing not found");
+
+  return { listing, isOwner };
+}
+
+/**
  * One listing, for whoever is asking.
  *
  * A DRAFT or UNPUBLISHED listing is visible ONLY to its owner, and answers 404 to
@@ -164,11 +206,7 @@ export async function listOwnListings(actor) {
  * @throws {AppError} 404.
  */
 export async function getListing(id, actor) {
-  const listing = await findListingById(id);
-  if (!listing) throw notFound("Listing not found");
-
-  const isOwner = actor && listing.owner_id === actor.id;
-  if (listing.status !== "PUBLISHED" && !isOwner) throw notFound("Listing not found");
+  const { listing } = await loadListingForPublic(id, actor);
 
   /**
    * FR-806's second half — a listing's rating.
@@ -590,11 +628,7 @@ export async function listBrowseCities() {
  * @throws {AppError} 404 for a hidden listing, 400 for an impossible range.
  */
 export async function quoteListing(id, actor, { start, end }) {
-  const listing = await findListingById(id);
-  if (!listing) throw notFound("Listing not found");
-
-  const isOwner = actor && listing.owner_id === actor.id;
-  if (listing.status !== "PUBLISHED" && !isOwner) throw notFound("Listing not found");
+  const { listing } = await loadListingForPublic(id, actor);
 
   let quote;
   try {
@@ -733,11 +767,7 @@ export async function removeBlackout(id, blockId, actor) {
  * @throws {AppError} 404 for a listing the caller may not see.
  */
 export async function getAvailability(id, actor, { from = null, to = null } = {}) {
-  const listing = await findListingById(id);
-  if (!listing) throw notFound("Listing not found");
-
-  const isOwner = actor && listing.owner_id === actor.id;
-  if (listing.status !== "PUBLISHED" && !isOwner) throw notFound("Listing not found");
+  const { listing, isOwner } = await loadListingForPublic(id, actor);
 
   const periods = await findUnavailablePeriods(id, { from, to });
 

@@ -311,6 +311,21 @@ describe("FR-503, FR-504 — refusals before the owner is troubled", () => {
       .send(bookingBody(created.body.data.listing.id));
     expect(response.status).toBe(404);
   });
+
+  it("refuses a listing whose owner is no longer ACTIVE — B10", async () => {
+    // No admin endpoint reaches SUSPENDED yet, so this is simulated directly at the
+    // database — same note as browse.test.js's and listings.test.js's identical
+    // tests, all three angles (browse, detail, request) on the one gap.
+    const { owner, renter, listingId } = await marketplace();
+    await query(`UPDATE users SET status = 'SUSPENDED' WHERE id = $1`, [owner.user.id]);
+
+    const response = await renter.agent.post("/api/bookings").send(bookingBody(listingId));
+
+    // Same answer as a draft or an unpublished listing — a renter has no more
+    // legitimate reason to learn this listing's owner is gone than to learn the id
+    // was wrong, and there is nobody left to accept or fulfil the request either way.
+    expect(response.status).toBe(404);
+  });
 });
 
 describe("the price is frozen — FR-112, FR-405", () => {

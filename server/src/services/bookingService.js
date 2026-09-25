@@ -15,6 +15,7 @@
  */
 
 import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
+import { withTransaction } from "../config/db.js";
 import {
   insertBooking,
   findBookingById,
@@ -94,8 +95,15 @@ export async function requestBooking(actor, { listingId, startsAt, endsAt, messa
   const listing = await findListingById(listingId);
 
   // A draft answers 404 to everyone but its owner, and its owner cannot book it
-  // anyway — so from here a hidden listing is simply absent.
-  if (!listing || listing.status !== "PUBLISHED") throw notFound("Listing not found");
+  // anyway — so from here a hidden listing is simply absent. Same answer for an
+  // owner who is no longer ACTIVE (deleted, suspended) — B10's fix: there would be
+  // nobody to accept or fulfil the request, so a renter must never be able to open
+  // one against it. Mirrors listingService.js's `loadListingForPublic`, which the
+  // listing detail page itself already went through before a renter could even see
+  // this listing to book it.
+  if (!listing || listing.status !== "PUBLISHED" || listing.owner_status !== "ACTIVE") {
+    throw notFound("Listing not found");
+  }
 
   /**
    * FR-502 — YOU CANNOT BOOK YOUR OWN LISTING.
@@ -196,24 +204,26 @@ export async function requestBooking(actor, { listingId, startsAt, endsAt, messa
     throw badRequest(error.message);
   }
 
-  const created = await insertBooking({
-    listingId,
-    renterId: actor.id,
-    startsAt,
-    endsAt,
-    quote,
-    renterMessage: message ?? null,
-  });
+  // ATOMIC: the booking row and its opening audit event either both commit or
+  // neither does. Without this, a crash between the two INSERTs leaves a booking
+  // that exists with no event explaining how — a trail with a hole in it, which
+  // NFR-511 treats as no trail at all. See config/db.js's `withTransaction`.
+  const booking = await withTransaction(async (tx) => {
+    const created = await insertBooking(
+      { listingId, renterId: actor.id, startsAt, endsAt, quote, renterMessage: message ?? null },
+      tx
+    );
 
-  await insertBookingEvent({
-    bookingId: created.id,
-    actorId: actor.id,
-    fromStatus: null,
-    toStatus: "REQUESTED",
-    comment: message ?? null,
-  });
+    await insertBookingEvent(
+      { bookingId: created.id, actorId: actor.id, fromStatus: null, toStatus: "REQUESTED", comment: message ?? null },
+      tx
+    );
 
-  const booking = await findBookingById(created.id);
+    // Read on the SAME client/transaction, not the plain `findBookingById()` — a
+    // read on a different pooled connection would not see this transaction's own
+    // still-uncommitted INSERT.
+    return findBookingById(created.id, tx);
+  });
 
   // FR-980's in-app half. AWAITED, unlike the fire-and-forget mail sends elsewhere:
   // this is one local INSERT, not a network round trip to a provider, so there is no
@@ -284,9 +294,30 @@ export async function actOnBooking(id, actor, action, comment = null) {
     }
   }
 
+  // ATOMIC: the status change and the audit event recording it either both commit
+  // or neither does — see config/db.js's `withTransaction` and this file's own
+  // header comment on why a trail with a hole in it is not a trail at all.
   let updated;
   try {
-    updated = await updateBookingStatus(id, check.to, booking.status);
+    updated = await withTransaction(async (tx) => {
+      const updatedRow = await updateBookingStatus(id, check.to, booking.status, tx);
+
+      // Null means the status moved between our read and our write — somebody else
+      // acted first. Same answer as an illegal transition, because from here it is
+      // one. Thrown INSIDE the transaction (rolling back nothing meaningful, since
+      // the UPDATE itself matched zero rows) so it reaches the SAME catch below as
+      // the exclusion-constraint case, rather than a second copy of this check.
+      if (!updatedRow) {
+        throw conflict("This booking has already moved on. Reload and try again.");
+      }
+
+      await insertBookingEvent(
+        { bookingId: id, actorId: actor?.id ?? null, fromStatus: booking.status, toStatus: check.to, comment },
+        tx
+      );
+
+      return updatedRow;
+    });
   } catch (error) {
     /**
      * 23P01 — THE EXCLUSION CONSTRAINT REFUSED IT.
@@ -305,22 +336,10 @@ export async function actOnBooking(id, actor, action, comment = null) {
         { action: "Overlaps a confirmed booking" }
       );
     }
+    // Re-thrown unchanged — this also covers the "already moved on" conflict above,
+    // which withTransaction rolled back and rethrew exactly as it was thrown.
     throw error;
   }
-
-  // Null means the status moved between our read and our write — somebody else acted
-  // first. Same answer as an illegal transition, because from here it is one.
-  if (!updated) {
-    throw conflict("This booking has already moved on. Reload and try again.");
-  }
-
-  await insertBookingEvent({
-    bookingId: id,
-    actorId: actor?.id ?? null,
-    fromStatus: booking.status,
-    toStatus: check.to,
-    comment,
-  });
 
   /**
    * THE SINGLE HOOK. Every state change passes through here, so every notification

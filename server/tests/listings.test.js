@@ -339,6 +339,23 @@ describe("the publish gate — FR-107", () => {
     // Still the owner's, and still editable.
     expect((await agent.get(`/api/listings/${id}`)).status).toBe(200);
   });
+
+  it("hides a PUBLISHED listing to EVERYONE, including its own owner, once the owner is no longer ACTIVE — B10", async () => {
+    const { agent, email } = await verifiedUser(app);
+    const id = await createPublished(agent);
+
+    expect((await agent.get(`/api/listings/${id}`)).status).toBe(200);
+
+    // Simulated directly — see browse.test.js's identical note on why there is no
+    // admin endpoint to reach this state through yet.
+    await query(`UPDATE users SET status = 'SUSPENDED' WHERE email = $1`, [email]);
+
+    // A stranger gets the same 404 a draft or an unknown id would — no more reason
+    // to learn this listing ever existed than to learn the id was wrong.
+    expect((await request(app).get(`/api/listings/${id}`)).status).toBe(404);
+    expect((await request(app).get(`/api/listings/${id}/quote?start=2027-01-01T00:00:00Z&end=2027-01-02T00:00:00Z`)).status).toBe(404);
+    expect((await request(app).get(`/api/listings/${id}/availability`)).status).toBe(404);
+  });
 });
 
 describe("editing — FR-108", () => {
