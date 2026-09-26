@@ -13,7 +13,7 @@ import request from "supertest";
 import { app } from "../src/app.js";
 import { query } from "../src/config/db.js";
 import { getFakeUploads, clearFakeUploads } from "../src/config/cloudinary.js";
-import { verifiedUser, unverifiedUser } from "./helpers/factories.js";
+import { verifiedUser, unverifiedUser, sessionCookieFor } from "./helpers/factories.js";
 
 /** A minimal valid draft. Deliberately missing everything publishing needs. */
 const DRAFT = {
@@ -188,13 +188,24 @@ describe("ownership — FR-111", () => {
     const stranger = await verifiedUser(app);
     const id = await createPublished(owner.agent);
 
+    // request(app), NOT stranger.agent, for every one of this burst — see
+    // docs/troubleshooting.md's "CI red for twelve days" entry. A supertest AGENT
+    // shares one http.Server across every request it makes and closes that server
+    // the moment its OWN first response completes, which resets any sibling request
+    // still connecting. `request(app)` gives each call its own server instead, so
+    // none of them can close another's out from under it. The cookie has to be
+    // carried by hand for the same reason — there is no shared agent to hold a jar.
+    const cookie = await sessionCookieFor(app, stranger.email);
     const attempts = [
-      stranger.agent.patch(`/api/listings/${id}`).send({ title: "Mine" }),
-      stranger.agent.post(`/api/listings/${id}/publish`),
-      stranger.agent.post(`/api/listings/${id}/unpublish`),
-      stranger.agent.delete(`/api/listings/${id}`),
-      stranger.agent.post(`/api/listings/${id}/photos`).attach("photos", JPEG, "x.jpg"),
-      stranger.agent.get(`/api/listings/${id}/readiness`),
+      request(app).patch(`/api/listings/${id}`).set("Cookie", cookie).send({ title: "Mine" }),
+      request(app).post(`/api/listings/${id}/publish`).set("Cookie", cookie),
+      request(app).post(`/api/listings/${id}/unpublish`).set("Cookie", cookie),
+      request(app).delete(`/api/listings/${id}`).set("Cookie", cookie),
+      request(app)
+        .post(`/api/listings/${id}/photos`)
+        .set("Cookie", cookie)
+        .attach("photos", JPEG, "x.jpg"),
+      request(app).get(`/api/listings/${id}/readiness`).set("Cookie", cookie),
     ];
 
     for (const response of await Promise.all(attempts)) {

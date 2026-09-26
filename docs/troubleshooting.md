@@ -6,6 +6,30 @@ Newest first.
 
 ---
 
+## The same supertest-agent bug, in a second test — 6-way, not 20-way
+
+**Symptom.** `listings.test.js > ownership — FR-111 > refuses every mutating action
+from a stranger` failed on CI with a bare `Error: read ECONNRESET`, while passing
+locally every time — same signature as the entry directly below this one.
+
+**Root cause.** The identical bug, in a smaller burst: this test fired 6 requests
+through `stranger.agent` via `Promise.all`, sharing one `http.Server` that the first
+completing request closes out from under the other five. Six requests are less likely
+to lose the race than twenty, which is almost certainly why this one had gone
+unnoticed until CI's timing (not any application change) happened to expose it.
+
+**Fix.** Same rule as below, applied here: switched every call in the burst from
+`stranger.agent.X()` to `request(app).X().set("Cookie", cookie)`
+(`sessionCookieFor(app, stranger.email)` for the cookie) — a server per request
+instead of one shared one, so none of them can close another's mid-flight.
+
+**The rule, restated because it has now caused this twice:** any `Promise.all` burst
+of requests in this suite must use `request(app)` per call, or one explicitly-owned
+server addressed by URL. Never a shared agent — not even for a "small" burst, since
+six was apparently not small enough.
+
+---
+
 ## CI red for twelve days — a supertest agent closes its server on the first reply
 
 **Symptom.** One test failed on every CI run since 10 September, and passed on every
