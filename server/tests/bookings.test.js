@@ -528,9 +528,14 @@ describe("FR-512, FR-513 — who can see a booking", () => {
   it("answers an identical 404 for an unknown id and a malformed one", async () => {
     const { renter } = await marketplace();
 
+    // request(app), not renter.agent — a burst through one agent shares a single
+    // server that the first reply closes out from under the others. See
+    // docs/troubleshooting.md; found the hard way at 6-way and 20-way bursts, fixed
+    // here pre-emptively at 2.
+    const cookie = await sessionCookieFor(app, renter.email);
     const responses = await Promise.all([
-      renter.agent.get("/api/bookings/11111111-1111-4111-8111-111111111111"),
-      renter.agent.get("/api/bookings/not-a-uuid"),
+      request(app).get("/api/bookings/11111111-1111-4111-8111-111111111111").set("Cookie", cookie),
+      request(app).get("/api/bookings/not-a-uuid").set("Cookie", cookie),
     ]);
 
     for (const response of responses) {

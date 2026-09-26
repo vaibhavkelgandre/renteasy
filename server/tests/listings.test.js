@@ -591,11 +591,16 @@ describe("deleting — FR-110", () => {
   });
 
   it("answers an identical 404 for an unknown id and a malformed one", async () => {
-    const { agent } = await verifiedUser(app);
+    const { email } = await verifiedUser(app);
 
+    // request(app), not an agent — a burst through one agent shares a single server
+    // that the first reply closes out from under the others. See
+    // docs/troubleshooting.md; found the hard way at 6-way and 20-way bursts, fixed
+    // here pre-emptively at 2.
+    const cookie = await sessionCookieFor(app, email);
     const responses = await Promise.all([
-      agent.get("/api/listings/11111111-1111-4111-8111-111111111111"),
-      agent.get("/api/listings/not-a-uuid"),
+      request(app).get("/api/listings/11111111-1111-4111-8111-111111111111").set("Cookie", cookie),
+      request(app).get("/api/listings/not-a-uuid").set("Cookie", cookie),
     ]);
 
     // "That is not a UUID" and "no such listing" are the same answer from outside, and
