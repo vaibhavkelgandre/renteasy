@@ -390,6 +390,43 @@ describe("typing, presence and read receipts", () => {
     await screen.findByRole("button", { name: /^send$/i });
   }
 
+  it("shows the other party as online, and as last seen once they leave", async () => {
+    joined();
+    await openThread();
+
+    expect(await screen.findByText("Online")).toBeInTheDocument();
+
+    push("presence:changed", {
+      bookingId: BOOKING,
+      userId: THEM,
+      online: false,
+      lastSeenAt: "2026-10-01T10:00:00Z",
+    });
+
+    // "Offline" alone says nothing a reader can act on — the question is whether it
+    // is worth waiting for a reply, and only a time answers that.
+    expect(screen.queryByText("Online")).not.toBeInTheDocument();
+    expect(screen.getByText(/last seen/i)).toBeInTheDocument();
+  });
+
+  it("ignores presence for somebody who is not the other party", async () => {
+    joined();
+    await openThread();
+
+    await screen.findByText("Online");
+
+    push("presence:changed", {
+      bookingId: BOOKING,
+      userId: "77777777-7777-4777-8777-777777777777",
+      online: false,
+      lastSeenAt: "2026-10-01T10:00:00Z",
+    });
+
+    // One socket serves the whole app. Without the id check, anybody's departure
+    // would mark this conversation's counterpart as gone.
+    expect(screen.getByText("Online")).toBeInTheDocument();
+  });
+
   it("shows who is typing, and stops when they stop", async () => {
     joined();
     await openThread();
