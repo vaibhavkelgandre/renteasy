@@ -155,10 +155,15 @@
   body {
     @apply bg-canvas font-sans text-ink-soft antialiased;
 
-    /* 16px base, deliberately not 14px. An internal tool optimises for density
-     * because its users are in it all day; a consumer marketplace optimises for
-     * comfort because its users arrive once and must not squint. */
-    font-size: 16px;
+    /* 12.8px base — 80% of the previous 16px, by direct request: the whole app read
+     * as too large/loose at "100%" and denser reads as more interactive. Since every
+     * Tailwind v4 spacing/sizing/radius/text utility here is rem-based off this one
+     * value, scaling it is what scales all of them together — paddings, gaps, card
+     * sizes, font sizes all shrink in proportion, with no per-component edits needed.
+     * `--container-content` (1440px, not rem) is untouched, so a grid whose cards
+     * are now smaller fits more of them before hitting that same cap — the freed
+     * space gets used by density, not by widening the gaps between fewer cards. */
+    font-size: 12.8px;
   }
 
   /* Chrome/Safari. Thin, no track, thumb only — the same treatment everywhere, so a
