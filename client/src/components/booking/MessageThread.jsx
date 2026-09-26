@@ -461,19 +461,6 @@ export function MessageThread({ bookingId, currentUserId }) {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="flex items-baseline gap-2">
           <h2 className="font-semibold text-ink">Messages</h2>
-
-          {/* Presence, and only between two parties to a booking — never on a
-              listing, never in search. Whether somebody is at their phone is a fact
-              about them, and sharing a rental is what earns the right to see it. */}
-          {otherParty?.online ? (
-            <span className="text-xs font-medium text-emerald-600">Online</span>
-          ) : (
-            otherParty?.lastSeenAt && (
-              <span className="text-xs text-faint">
-                Last seen {formatWhen(otherParty.lastSeenAt)}
-              </span>
-            )
-          )}
         </div>
 
         {canSend && (
