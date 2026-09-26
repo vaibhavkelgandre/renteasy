@@ -70,32 +70,31 @@
   /* ======================================================================
    * ACCENT — amber. Exactly one.
    *
-   * WHY AMBER AND NOT TEAL (which this app used) OR PURPLE: on a near-black ground a
-   * cool accent recedes and reads as a link, while a warm one advances and reads as
-   * an action. This is a marketplace whose whole surface is photographs of objects,
-   * and warm light over them reads as a shop window rather than as software. Purple
-   * is the tell of a generated interface and is avoided deliberately.
-   *
-   * Slightly desaturated from a pure orange: fully saturated orange on black is a
-   * warning label. This is the colour of a filament bulb, which is the intended
-   * feeling.
+   * TEAL, REVERSED BACK FROM AMBER BY DIRECT REQUEST — amber read as too yellow/
+   * warning-label-like. The tradeoff the earlier amber choice was guarding against
+   * (a cool accent recedes on a near-black ground and can read as a link rather than
+   * an action) is accepted here as a deliberate choice, not an oversight — a
+   * sufficiently saturated, mid-brightness teal still has enough contrast against
+   * `canvas`/`surface` to read as an action, it just doesn't glow the way amber did.
    *
    * IT IS ALSO THE "NEEDS YOU" COLOUR (see the status tones below), and that overlap
    * is intentional rather than a collision. The accent means "this is where you act".
    * A booking waiting on your reply is exactly that.
    * ====================================================================== */
-  --color-accent: #f5a524;
-  --color-accent-hover: #ffb84a;
-  --color-accent-press: #d98c14;
+  --color-accent: #14b8a6;
+  --color-accent-hover: #2dd4bf;
+  --color-accent-press: #0d9488;
   /* A wash for a tinted pill or a selected row. Expressed as a solid hex rather than
    * an alpha so it composites identically over every surface step — a translucent
    * tint over `surface` and over `raised` are two different colours, and that is
    * visible the moment a selected row sits next to a selected chip. */
-  --color-accent-soft: #2a2114;
-  --color-accent-line: #5c4415;
-  /* Text ON the accent. Near-black, never white: white on amber fails contrast badly
-   * and is the single most common accessibility defect in an amber interface. */
-  --color-accent-ink: #1a1206;
+  --color-accent-soft: #0f2a27;
+  --color-accent-line: #155e56;
+  /* Text ON the accent. Near-white, never near-black: teal at this brightness reads
+   * as a mid-tone, not a pale one, so white text is what stays comfortably readable
+   * across accent/hover/press — the opposite call from amber, which was pale enough
+   * to need dark text. */
+  --color-accent-ink: #f2f3f5;
 
   /* ======================================================================
    * STATUS — two hues, plus the accent.
