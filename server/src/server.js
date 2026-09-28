@@ -10,8 +10,6 @@
 import { app } from "./app.js";
 import { assertEnvIsValid, env } from "./config/env.js";
 import { closeDatabase } from "./config/db.js";
-import { describeMailMode } from "./config/mailer.js";
-import { describeMediaMode } from "./config/cloudinary.js";
 import { startScheduler } from "./scheduler.js";
 import { createSocketServer, SOCKET_PATH } from "./ws/socketServer.js";
 
@@ -41,17 +39,17 @@ const server = app.listen(env.port, () => {
   // every link in every email is wrong.
   console.log(`[server] links point at: ${env.appUrl}`);
 
-  // Said at boot deliberately. "Mail is not configured" is otherwise invisible until
-  // the first person fails to receive a verification link — at which point it looks
-  // like a bug in registration rather than a missing environment variable.
-  console.log(`[mail] ${describeMailMode()}`);
-  console.log(`[media] ${describeMediaMode()}`);
+  // Deliberately NOT logging mail/media provider status here anymore — it used to
+  // print the sending address (`describeMailMode()`) and the Cloudinary cloud name
+  // (`describeMediaMode()`), which is more than a local terminal needs to leak. If
+  // "mail is not configured" needs to be diagnosable again, surface it from a status
+  // endpoint an operator has to deliberately call, not an unconditional boot log.
 
-  // Said at boot for the same reason as the two above, plus one specific to this
+  // Said at boot for the same reason as `links point at:` above, plus one specific to this
   // transport: a socket handshake is refused when its `Origin` does not match
   // `env.appUrl`, while HTTP carries on working perfectly — because HTTP does not
   // check origin. Printing the path next to `links point at:` above puts both halves
-  // of that diagnosis in the same three lines of log.
+  // of that diagnosis next to each other in the log.
   console.log(`[ws] realtime on ${SOCKET_PATH}`);
 
   /**
