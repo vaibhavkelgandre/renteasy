@@ -155,7 +155,14 @@ function ListingTile({ listing, unit }) {
               // 500ms and 5%. At the old 200ms/2% the effect was too small to register
               // as intentional and just looked like a rendering wobble — either commit
               // to it or leave the image still.
-              className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+              //
+              // rounded-xl matches the wrapper's own radius: the wrapper's
+              // overflow-hidden clips the resting image fine, but a scaled-up
+              // (group-hover:scale-105) image is promoted to its own compositing
+              // layer in some browsers, and that layer's corners can render past
+              // the ancestor's clip. Rounding the image itself is what keeps the
+              // corners cut on every browser, hover or not.
+              className="size-full rounded-xl object-cover transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
             <div className="grid size-full place-items-center text-sm text-faint">No photo</div>

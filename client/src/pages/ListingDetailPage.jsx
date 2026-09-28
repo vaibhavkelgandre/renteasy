@@ -163,7 +163,13 @@ function Gallery({ photos, title }) {
           // `max-h` on top of the ratio, because a ratio alone means a wider page is a
           // taller photograph — at 1440px this box would be 640px deep and undo exactly
           // what the 3:2 was for. Beyond the cap it crops rather than grows.
-          className="aspect-[3/2] max-h-[460px] w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+          //
+          // rounded-2xl matches the wrapper's own radius, same reason as the grid
+          // tile: the wrapper's overflow-hidden clips this fine at rest, but the
+          // group-hover:scale-[1.03] zoom can get promoted to its own compositing
+          // layer, whose corners some browsers then render past the wrapper's
+          // clip. Rounding the image itself keeps the corners cut regardless.
+          className="aspect-[3/2] max-h-[460px] w-full rounded-2xl object-cover transition-transform duration-700 group-hover:scale-[1.03]"
           // Reserving the real dimensions stops the page jumping as it loads, which is
           // why width and height are stored alongside the storage id.
           width={current.width}
