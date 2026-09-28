@@ -1,10 +1,35 @@
 # 05 — Browse, search and pagination
 
-**FR-300 to FR-310.** Status: **built and tested** — 25 server tests, 17 client tests. FR-303 waits
+**FR-300 to FR-310.** Status: **built and tested** — 25 server tests, 24 client tests. FR-303 waits
 on availability; the rating halves of FR-306 and FR-310 wait on reviews.
 
 The endpoint that makes a published listing findable. Before this, a listing was visible only to
 somebody who already had its URL — which is not a marketplace.
+
+## 0. `/` is home AND browse — deliberately one route
+
+A hero, a "browse by category" tile grid and a "how it works" section now render above this
+page's own filter rail and grid (`HomeHero.jsx`, `CategoryShowcase.jsx`, `HowItWorksSection.jsx`,
+under `client/src/components/home/`), and they show for every visitor, signed in or not — the
+requirement was explicitly "show the home and all listings to new users too", not gate anything
+behind an account.
+
+A separate `/browse` route was considered and rejected: it would have touched the header's search
+box (`onBrowse = location.pathname === "/"`), the header nav's own "Browse" link, three
+"Browse listings" buttons elsewhere in the app, and the post-login redirect — all to solve a
+problem a single route already solves. Instead, the marketing section renders **only while
+`!hasFilters`** — the moment a search, a category or a shared filtered link is active, it gets out
+of the way and the page is exactly the results view it always was. A category tile's `onClick`
+calls the exact same `apply({ category: slug })` the filter rail's own `<select>` calls, so it is a
+second entry point into one filter state, not a second implementation of filtering.
+
+**One page, two headings, never both `h1`.** The hero has its own `h1` ("Rent almost anything,
+nearby."); "Available near you" — the original heading, unchanged in wording — is written by hand
+in `HomePage.jsx` rather than handed to `Page`'s own `title` prop (which always renders an
+unconditional `h1`), and downgrades to an `h2` for exactly as long as the hero's `h1` is also on the
+page. Listing/booking still require an account — that was already true (`RequireAuth` on
+`/listings/new` and `/listings/:id/book`), so a signed-out click on "List your item" is bounced to
+`/login` and back by the existing guard, with no change needed here.
 
 ---
 

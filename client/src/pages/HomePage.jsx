@@ -1,8 +1,20 @@
 /**
- * Browse — the landing page, and the only way to find a listing you do not already
- * have a link to. FR-300 to FR-309.
+ * Home AND browse, one page at `/`. FR-300 to FR-309.
  *
- * Public, and the same page whether you are signed in or not.
+ * Public, and the same page whether you are signed in or not — including the
+ * marketing section: there is no reason to hide "how it works" from a returning user,
+ * and it costs nothing to render.
+ *
+ * STAYS ONE ROUTE, DELIBERATELY. An earlier plan for this page split it into a
+ * separate `/` (marketing) and `/browse` (this page's filter rail and grid), but that
+ * touches routing, the header's nav, the header search box's own `onBrowse` check, and
+ * every "Browse listings" link elsewhere in the app — all to solve a problem that does
+ * not need a second route. Instead, a hero + category showcase + "how it works" render
+ * ABOVE the unchanged filter rail and grid, and ONLY while no filter is active
+ * (`!hasFilters`) — the moment someone searches, picks a category or opens a filtered
+ * link, the marketing section gets out of the way and this is exactly the results page
+ * it always was. Everything below that point — the URL-owns-filter-state design, the
+ * pager, the empty state — is untouched.
  *
  * FILTER STATE LIVES IN THE URL, not in component state, and that is the decision this
  * page turns on. A filtered view is then shareable, survives a refresh, and works with
@@ -16,11 +28,14 @@
  * two, which is why moving the box needed no state lifted anywhere.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../components/ui/Button.jsx";
 import { Alert } from "../components/ui/Alert.jsx";
 import { Page } from "../components/ui/Page.jsx";
+import { HomeHero } from "../components/home/HomeHero.jsx";
+import { CategoryShowcase } from "../components/home/CategoryShowcase.jsx";
+import { HowItWorksSection } from "../components/home/HowItWorksSection.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { toDateInput } from "../lib/dates.js";
@@ -241,6 +256,10 @@ export function HomePage() {
   // Mobile only. The rail is always present on `lg` and up, where this is ignored.
   const [filtersOpen, setFiltersOpen] = useState(false);
 
+  // The hero's "Browse listings" button scrolls here rather than navigating — there is
+  // nowhere else to navigate to, since the results are already on this page.
+  const resultsRef = useRef(null);
+
   // Read straight from the URL on every render. Nothing is mirrored, so nothing can
   // fall out of sync.
   const q = params.get("q") ?? "";
@@ -353,15 +372,54 @@ export function HomePage() {
     from && to && { key: "dates", label: `${from} to ${to}`, clear: { from: "", to: "" } },
   ].filter(Boolean);
 
+  // The results heading is an `h1` on its own (unchanged from before this page grew a
+  // hero) once filtered, but demotes to an `h2` once the hero above it is showing —
+  // a page gets exactly one `h1`, and while the hero renders, that h1 is its own
+  // ("Rent almost anything, nearby."). `Page`'s own `title` prop always renders an
+  // `h1` unconditionally, which is why this heading is written out by hand here
+  // instead of being handed to it.
+  const ResultsHeading = hasFilters ? "h1" : "h2";
+
   return (
-    <Page
-      // COPY, not a feature: "Rent almost anything, nearby" described the site;
-      // "Available near you" describes what is on the screen underneath it, which is
-      // what a heading directly above a grid of results should do.
-      title="Available near you"
-      description="Cameras, tools, bikes and the rest — by the hour, the day or the month, from people nearby."
-    >
-      <div className="grid gap-x-8 gap-y-6 lg:grid-cols-[228px_minmax(0,1fr)] lg:items-start">
+    <Page>
+      {/* The marketing section — hero, categories, how-it-works — renders only while
+          nothing is being filtered. The instant a search, a category or a shared
+          filtered link is active, this gets out of the way and the page is exactly
+          the results view it always was. */}
+      {!hasFilters && (
+        <>
+          <HomeHero
+            totalListings={state.status === "ready" ? state.total : null}
+            onBrowseClick={() =>
+              resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+          />
+          <CategoryShowcase categories={categories} onSelect={(slug) => apply({ category: slug })} />
+          <HowItWorksSection />
+        </>
+      )}
+
+      {/* Same markup `Page`'s own title block renders, copied rather than shared —
+          see the note above on why this can't just be `Page`'s `title` prop. */}
+      <div className="mb-6">
+        {/* COPY, not a feature: "Rent almost anything, nearby" (the hero, above) describes
+            the site; "Available near you" describes what is on the screen directly under
+            THIS heading, which is what a heading directly above a grid of results should
+            do — and it stays exactly this, unconditionally, so a filtered/shared link
+            renders identically to before. */}
+        <ResultsHeading className="text-[1.875rem] font-bold leading-tight tracking-tight text-ink">
+          Available near you
+        </ResultsHeading>
+        <p className="mt-1.5 max-w-2xl leading-relaxed text-muted">
+          Cameras, tools, bikes and the rest — by the hour, the day or the month, from
+          people nearby.
+        </p>
+      </div>
+
+      <div
+        ref={resultsRef}
+        className="grid gap-x-8 gap-y-6 lg:grid-cols-[228px_minmax(0,1fr)] lg:items-start"
+      >
         {/* ============================================================
             THE FILTER RAIL.
 

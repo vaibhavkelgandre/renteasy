@@ -381,3 +381,40 @@ describe("empty and error states", () => {
     expect(await screen.findByText("Camera 0")).toBeInTheDocument();
   });
 });
+
+describe("the home page marketing section", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("shows the hero and category tiles when nothing is filtered", async () => {
+    renderBrowse();
+
+    expect(await screen.findByText("Camera 0")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /rent almost anything, nearby/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cameras & photography" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /how it works/i })).toBeInTheDocument();
+  });
+
+  it("hides the marketing section once a filter is already active", async () => {
+    renderBrowse("/?q=drill");
+
+    expect(await screen.findByText("Camera 0")).toBeInTheDocument();
+    // "Available near you" is still the results heading — only the hero, the category
+    // tiles and "how it works" are gone.
+    expect(screen.getByRole("heading", { name: /available near you/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /rent almost anything, nearby/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cameras & photography" })).not.toBeInTheDocument();
+  });
+
+  it("filters the results and hides the marketing section when a category tile is clicked", async () => {
+    const calls = renderBrowse();
+    await screen.findByText("Camera 0");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Cameras & photography" }));
+
+    await waitFor(() => {
+      expect(lastBrowseQuery(calls).get("category")).toBe("cameras");
+    });
+    expect(screen.queryByRole("heading", { name: /rent almost anything, nearby/i })).not.toBeInTheDocument();
+  });
+});
