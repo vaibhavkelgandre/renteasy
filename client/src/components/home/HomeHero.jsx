@@ -25,8 +25,24 @@
  * NO CARD FRAME AROUND IT, ON DIRECT REQUEST. The artwork's own background is already
  * near-black, so a bordered `bg-raised` box around it just drew a visible seam where
  * the image's dark background met the panel's slightly-lighter one instead of blending
- * into the page. `rounded-2xl` stays on the `<img>` itself — dropping the frame is not
- * the same as dropping every corner treatment.
+ * into the page.
+ *
+ * `.hero-banner-blend` (index.css) IS THE FIX FOR "LOOKS LIKE A PASTED-ON RECTANGLE" —
+ * reported after the frame was dropped, because dropping the frame alone still left a
+ * flat rectangular edge wherever the image's own dark background met the page. That
+ * class does two things together: `mix-blend-mode: lighten` merges the image's
+ * near-black background into the page's own near-black background (only the lit
+ * product photography and the glowing pins stay visually distinct), and a radial
+ * `mask-image` fades the image's opacity to zero well before its actual edge, so there
+ * is no boundary left to notice at all — see that class's own comment for why neither
+ * half works alone. `rounded-2xl` is gone along with it: there is no longer a hard edge
+ * for a corner radius to round.
+ *
+ * SCALED UP VIA `transform`, NOT A WIDER BOX. `scale-125` enlarges the image visually
+ * without changing the grid column's own width, so the text column and the "browse by
+ * category" grid below it do not reflow to match — the section's own `overflow-hidden`
+ * (unchanged from before) clips the scaled-up image the same way it always clipped
+ * this box, so scaling it up costs nothing extra to contain.
  */
 
 import { Link } from "react-router-dom";
@@ -43,9 +59,9 @@ export function HomeHero({ totalListings = null, onBrowseClick }) {
   return (
     <section className="relative overflow-hidden pb-14 pt-6 sm:pb-20 sm:pt-10">
       {/* The image column is deliberately wider than the text column (`1fr` vs
-          `1.15fr`) — asked to be made bigger, and the artwork is the more eye-catching
+          `1.35fr`) — asked to be made bigger, and the artwork is the more eye-catching
           half of the two. */}
-      <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.15fr] lg:gap-14">
+      <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.35fr] lg:gap-14">
         <div className="max-w-2xl">
           {totalListings != null && totalListings > 0 && (
             // A LIVE FIGURE, NOT A SLOGAN. "Trusted by thousands" on a fresh
@@ -89,7 +105,7 @@ export function HomeHero({ totalListings = null, onBrowseClick }) {
         {/* `order-first` on mobile would put a tall image above the headline, pushing
             the actual pitch below the fold — so it stays document-order (below the
             text) until `lg`, where the grid places it beside the text instead. */}
-        <div className="mx-auto w-full max-w-xl lg:max-w-none">
+        <div className="mx-auto w-full max-w-2xl lg:max-w-none">
           <img
             src="/images/home-hero-banner.webp"
             // Decorative: every category it depicts (cameras, bikes, tools, a tent,
@@ -98,9 +114,8 @@ export function HomeHero({ totalListings = null, onBrowseClick }) {
             alt=""
             // Matches the source asset's own 1671x940 ratio, so it never has to
             // letterbox or stretch — `object-contain` is then a no-op sizing decision
-            // rather than a fallback for a mismatched box. `rounded-2xl` is on the
-            // image itself now that there's no frame around it to carry the radius.
-            className="aspect-[1671/940] w-full rounded-2xl object-contain"
+            // rather than a fallback for a mismatched box.
+            className="hero-banner-blend aspect-[1671/940] w-full scale-125 object-contain"
             width={1671}
             height={940}
             // Eager, not lazy: this is above the fold on every viewport it renders

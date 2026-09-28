@@ -276,4 +276,33 @@
     background-position: top center;
     background-repeat: no-repeat;
   }
+
+  /**
+   * Blends the home hero's banner illustration into the page instead of sitting on
+   * top of it as a rectangle.
+   *
+   * TWO PROBLEMS, TWO PROPERTIES. `mix-blend-mode: lighten` keeps, at every pixel,
+   * whichever is brighter — the image or the near-black page underneath it — so the
+   * image's own dark background (already close to `--color-canvas`) all but
+   * disappears into the page and only the lit-up product photography and glowing
+   * teal pins stay visible. That alone still leaves a perfectly rectangular edge
+   * wherever the source image is lighter than the page right at its border, which is
+   * what the `mask-image` radial gradient is for: it fades the image's own opacity
+   * to zero well before its edge, so there is no boundary left to notice. Neither
+   * property alone fixes this — blend mode without the mask still shows a rectangle
+   * where the image is bright at the edge; the mask without blend mode still shows a
+   * flat dark rectangle where the image is dark in the middle.
+   *
+   * `-webkit-mask-image` is required alongside the unprefixed property — Safari has
+   * still not shipped the unprefixed form.
+   */
+  .hero-banner-blend {
+    mix-blend-mode: lighten;
+    mask-image: radial-gradient(ellipse 68% 68% at 50% 50%, black 55%, transparent 100%);
+    -webkit-mask-image: radial-gradient(
+      ellipse 68% 68% at 50% 50%,
+      black 55%,
+      transparent 100%
+    );
+  }
 }
