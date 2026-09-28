@@ -404,9 +404,13 @@ export async function destroyListingPhoto(storageId) {
  */
 export function listingPhotoUrl(storageId, variant = "detail") {
   const transformations = {
-    // c_fill crops to exactly fill the tile, so a grid of mixed aspect ratios does not
-    // become a ragged mess.
-    thumb: "w_400,h_300,c_fill,f_auto,q_auto",
+    // c_pad scales the WHOLE photo down to fit inside 400x300 and letterboxes the
+    // leftover space, rather than c_fill's crop-to-fill — a grid of mixed aspect
+    // ratios still lines up (every thumb is exactly 400x300), but a tall product
+    // photo no longer loses the head and feet to a landscape crop. b_rgb matches
+    // this app's own `--color-raised` (index.css) so the letterbox bars blend into
+    // the tile's own background instead of showing as black bars.
+    thumb: "w_400,h_300,c_pad,b_rgb:171a21,f_auto,q_auto",
     // c_limit only ever shrinks — it never upscales a small photo into a blurry big one.
     detail: "w_1200,c_limit,f_auto,q_auto",
     original: "f_auto,q_auto",

@@ -522,7 +522,11 @@ function PhotoManager({ listingId, photos, onChanged }) {
           {photos.map((photo, index) => (
             <li key={photo.id} className="overflow-hidden rounded-xl border border-line">
               <div className="relative aspect-[4/3] bg-raised">
-                <img src={photo.thumbUrl} alt="" className="size-full object-cover" loading="lazy" />
+                {/* contain, not cover: thumbUrl is a c_pad thumb (listingPhotoUrl)
+                    that already letterboxes the whole photo, so cover would just
+                    re-crop it — an owner reordering/checking their own photos
+                    should see the actual uncropped upload here. */}
+                <img src={photo.thumbUrl} alt="" className="size-full object-contain" loading="lazy" />
                 {index === 0 && (
                   <span className="absolute left-2 top-2 rounded-full bg-canvas/80 px-2 py-0.5 text-xs font-medium text-ink">
                     Cover

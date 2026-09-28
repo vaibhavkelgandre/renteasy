@@ -169,7 +169,14 @@ function Gallery({ photos, title }) {
           // group-hover:scale-[1.03] zoom can get promoted to its own compositing
           // layer, whose corners some browsers then render past the wrapper's
           // clip. Rounding the image itself keeps the corners cut regardless.
-          className="aspect-[3/2] max-h-[460px] w-full rounded-2xl object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+          //
+          // object-contain, not object-cover: `current.url` is the "detail"
+          // variant (listingPhotoUrl), which is never server-cropped — it keeps
+          // the photo's real aspect ratio. Most listing photos are taller than
+          // this 3:2 box, and object-cover was cropping the top and bottom off
+          // (a person's head and feet) to fill it. Contain shows the whole photo,
+          // letterboxed on the sides instead, against the wrapper's own bg-raised.
+          className="aspect-[3/2] max-h-[460px] w-full rounded-2xl object-contain transition-transform duration-700 group-hover:scale-[1.03]"
           // Reserving the real dimensions stops the page jumping as it loads, which is
           // why width and height are stored alongside the storage id.
           width={current.width}
@@ -206,7 +213,10 @@ function Gallery({ photos, title }) {
                       "border-transparent opacity-55 hover:opacity-100",
                 ].join(" ")}
               >
-                <img src={photo.thumbUrl} alt="" className="size-full object-cover" loading="lazy" />
+                {/* object-contain to match the hero above — thumbUrl is now a c_pad
+                    thumb (listingPhotoUrl) that already letterboxes the whole
+                    photo, so contain just draws what Cloudinary already fit. */}
+                <img src={photo.thumbUrl} alt="" className="size-full object-contain" loading="lazy" />
               </button>
             </li>
           ))}

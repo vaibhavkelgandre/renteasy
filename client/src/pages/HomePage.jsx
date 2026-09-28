@@ -162,7 +162,13 @@ function ListingTile({ listing, unit }) {
               // layer in some browsers, and that layer's corners can render past
               // the ancestor's clip. Rounding the image itself is what keeps the
               // corners cut on every browser, hover or not.
-              className="size-full rounded-xl object-cover transition-transform duration-500 group-hover:scale-105"
+              //
+              // object-contain, not object-cover: `coverUrl` is now a c_pad thumb
+              // (see listingPhotoUrl) that already letterboxes the whole photo into
+              // 400x300 — cover would re-crop that padded image right back to a
+              // tight, headless slice. Contain just draws what Cloudinary already
+              // fit inside the frame.
+              className="size-full rounded-xl object-contain transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
             <div className="grid size-full place-items-center text-sm text-faint">No photo</div>

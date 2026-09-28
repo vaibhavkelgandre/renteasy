@@ -123,7 +123,10 @@ export function MyListingsPage() {
                   <img
                     src={listing.coverUrl}
                     alt=""
-                    className="size-full object-cover"
+                    // contain, not cover: coverUrl is a c_pad thumb (listingPhotoUrl)
+                    // that already letterboxes the whole photo, so cover would just
+                    // re-crop it back down.
+                    className="size-full object-contain"
                     loading="lazy"
                   />
                 ) : (

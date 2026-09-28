@@ -50,7 +50,9 @@ function BookingRow({ booking, side }) {
             not sit at a different height from its neighbours. */}
         <div className="size-20 shrink-0 overflow-hidden rounded-xl border border-line bg-raised">
           {booking.coverUrl ? (
-            <img src={booking.coverUrl} alt="" loading="lazy" className="size-full object-cover" />
+            // contain, not cover: coverUrl is a c_pad thumb (listingPhotoUrl) that
+            // already letterboxes the whole photo, so cover would just re-crop it.
+            <img src={booking.coverUrl} alt="" loading="lazy" className="size-full object-contain" />
           ) : (
             <div className="grid size-full place-items-center text-xs text-faint">No photo</div>
           )}

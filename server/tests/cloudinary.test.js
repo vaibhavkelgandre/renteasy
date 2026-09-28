@@ -139,10 +139,11 @@ describe("delivery URLs", () => {
     }
   });
 
-  it("crops the thumbnail to a fixed box but only ever shrinks the detail image", () => {
-    // c_fill so a grid of mixed aspect ratios is not a ragged mess; c_limit so a small
-    // photo is never upscaled into a blurry big one.
-    expect(listingPhotoUrl("abc", "thumb")).toContain("c_fill");
+  it("pads the thumbnail into a fixed box but only ever shrinks the detail image", () => {
+    // c_pad (not c_fill) so a grid of mixed aspect ratios still lines up (every
+    // thumb is exactly 400x300) without cropping a tall photo down to a headless
+    // slice; c_limit so a small photo is never upscaled into a blurry big one.
+    expect(listingPhotoUrl("abc", "thumb")).toContain("c_pad");
     expect(listingPhotoUrl("abc", "detail")).toContain("c_limit");
   });
 });
