@@ -401,7 +401,7 @@ export function HomePage() {
 
       {/* Same markup `Page`'s own title block renders, copied rather than shared —
           see the note above on why this can't just be `Page`'s `title` prop. */}
-      <div className="mb-6">
+      <div className="mb-6 text-center">
         {/* COPY, not a feature: "Rent almost anything, nearby" (the hero, above) describes
             the site; "Available near you" describes what is on the screen directly under
             THIS heading, which is what a heading directly above a grid of results should
@@ -410,7 +410,7 @@ export function HomePage() {
         <ResultsHeading className="text-[1.875rem] font-bold leading-tight tracking-tight text-ink">
           Available near you
         </ResultsHeading>
-        <p className="mt-1.5 max-w-2xl leading-relaxed text-muted">
+        <p className="mx-auto mt-1.5 max-w-2xl leading-relaxed text-muted">
           Cameras, tools, bikes and the rest — by the hour, the day or the month, from
           people nearby.
         </p>
