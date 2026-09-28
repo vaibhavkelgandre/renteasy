@@ -72,10 +72,10 @@ export function HowItWorksSection() {
               <span className="font-mono text-sm tabular text-faint" aria-hidden="true">
                 {String(index + 1).padStart(2, "0")}
               </span>
+              <h3 className="font-semibold text-ink">{step.title}</h3>
             </div>
 
-            <h3 className="font-semibold text-ink">{step.title}</h3>
-            <p className="leading-relaxed text-muted">{step.body}</p>
+            <p className="text-center leading-relaxed text-muted">{step.body}</p>
           </li>
         ))}
       </ol>
