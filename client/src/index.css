@@ -383,22 +383,20 @@
   }
 
   /**
-   * LIGHT MODE CANNOT USE THE SAME TRICK, so this isn't a themed variant of the
-   * rule above — it undoes it. `mix-blend-mode: lighten` keeps whichever pixel is
-   * BRIGHTER; against a white canvas that is always the canvas, so the entire
-   * image — product photography included, not just its background — bleaches out
-   * to near-invisible. Confirmed by looking at it, not assumed.
-   *
-   * The fix is the ORIGINAL treatment this class's own comment says it replaced: a
-   * plain frame. That was wrong only on a dark canvas, where a bordered box drew a
-   * visible seam against the page; on a light canvas a photo with its own dark
-   * background inside a light card is the ordinary, expected way to show one.
+   * LIGHT MODE KEEPS THE MASK, DROPS ONLY THE BLEND. `mix-blend-mode: lighten`
+   * keeps whichever pixel is BRIGHTER; against a white canvas that is always the
+   * canvas, so the entire image — product photography included, not just its
+   * background — bleached out to near-invisible. A plain bordered frame was tried
+   * as the fix and reported back as not reading as "blended" — a hard rectangle is
+   * exactly the seam this whole class exists to avoid, just moved from dark mode
+   * to light. So this keeps the SAME radial mask the dark-mode rule already uses
+   * (inherited, not redeclared — nothing here touches mask-image): the image still
+   * fades to transparent well before its own edge, it just does so at its true
+   * colours instead of blended-then-bleached ones. What is left is the image's own
+   * dark background as a soft-edged shape floating on the page, which is the same
+   * visual language as dark mode's version, not a boxed-in replacement for it.
    */
   html[data-theme="light"] .hero-banner-blend {
     mix-blend-mode: normal;
-    mask-image: none;
-    -webkit-mask-image: none;
-    border-radius: 1rem;
-    border: 1px solid var(--color-line);
   }
 }

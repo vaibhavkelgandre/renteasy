@@ -407,10 +407,19 @@ export function listingPhotoUrl(storageId, variant = "detail") {
     // c_pad scales the WHOLE photo down to fit inside 400x300 and letterboxes the
     // leftover space, rather than c_fill's crop-to-fill — a grid of mixed aspect
     // ratios still lines up (every thumb is exactly 400x300), but a tall product
-    // photo no longer loses the head and feet to a landscape crop. b_rgb matches
-    // this app's own `--color-raised` (index.css) so the letterbox bars blend into
-    // the tile's own background instead of showing as black bars.
-    thumb: "w_400,h_300,c_pad,b_rgb:171a21,f_auto,q_auto",
+    // photo no longer loses the head and feet to a landscape crop.
+    //
+    // b_transparent, NOT A HARDCODED b_rgb. This used to match `--color-raised`'s
+    // dark-mode hex directly, so the letterbox bars blended into the tile's
+    // background in the one theme that existed at the time. Once light mode
+    // shipped, that same fixed dark colour showed up as visible dark bars on a
+    // light card — the exact same URL is served to every visitor regardless of
+    // their theme, so a colour baked into the transform can only ever be right
+    // for one. Transparent pixels instead let the CLIENT's own theme-aware
+    // background (the `bg-raised` wrapper around this image) show through
+    // whichever theme is actually active, correctly, forever — including any
+    // theme added after this comment is written.
+    thumb: "w_400,h_300,c_pad,b_transparent,f_auto,q_auto",
     // c_limit only ever shrinks — it never upscales a small photo into a blurry big one.
     detail: "w_1200,c_limit,f_auto,q_auto",
     original: "f_auto,q_auto",
