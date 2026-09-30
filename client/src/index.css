@@ -151,9 +151,13 @@
  * detail this file does not control.
  *
  * TOGGLED BY `data-theme` ON `<html>`, SET BEFORE REACT EVER MOUNTS — see the
- * inline script in index.html and hooks/useTheme.js. Dark is the default (no
- * attribute at all still renders dark, matching this app's original identity),
- * so this block only ever ADDS the light variant, never removes the dark one.
+ * inline script in index.html and hooks/useTheme.js. LIGHT IS NOW THE APP'S
+ * DEFAULT for a first-ever visit, by direct request — the script always writes
+ * an explicit `data-theme` before anything paints, so the plain, attribute-less
+ * `:root` values from @theme above (still dark, this app's original palette) are
+ * reached only if that script somehow never ran. This block only ever ADDS the
+ * light variant on top of the dark one; nothing here removes the dark palette,
+ * which is still what a returning visitor who explicitly chose it gets back.
  *
  * The relationships between steps are kept the same as the dark palette, not the
  * exact hexes — see each dark-mode comment above for what a given token is FOR;

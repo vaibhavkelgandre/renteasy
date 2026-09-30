@@ -18,42 +18,44 @@ afterEach(() => {
 });
 
 describe("ThemeToggle", () => {
-  it("defaults to dark when the DOM carries no theme yet, and flips to light on click", async () => {
+  it("defaults to light when the DOM carries no theme yet, and flips to dark on click", async () => {
     const user = userEvent.setup();
     render(<ThemeToggle />);
 
-    // Dark is the app's baseline — a page with no data-theme attribute at all
-    // renders dark (see index.css), so the button should offer the SWITCH-TO
-    // state, "light".
-    const button = screen.getByRole("button", { name: /switch to light mode/i });
+    // Light is the app's default for a first-ever visit (by direct request, not
+    // the OS preference) — a page with no data-theme attribute at all still
+    // falls back to light here (see useTheme.js), so the button should offer the
+    // SWITCH-TO state, "dark".
+    const button = screen.getByRole("button", { name: /switch to dark mode/i });
 
     await user.click(button);
 
-    expect(document.documentElement.dataset.theme).toBe("light");
-    expect(document.documentElement.style.colorScheme).toBe("light");
-    expect(localStorage.getItem("renteasy-theme")).toBe("light");
-    expect(screen.getByRole("button", { name: /switch to dark mode/i })).toBeInTheDocument();
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.documentElement.style.colorScheme).toBe("dark");
+    expect(localStorage.getItem("renteasy-theme")).toBe("dark");
+    expect(screen.getByRole("button", { name: /switch to light mode/i })).toBeInTheDocument();
   });
 
   it("reads an already-applied theme from the DOM instead of re-deciding it", () => {
     // Simulates index.html's inline script having already run and set this before
     // React mounted — the hook must trust it, not overwrite it with its own guess.
-    document.documentElement.dataset.theme = "light";
+    document.documentElement.dataset.theme = "dark";
 
     render(<ThemeToggle />);
 
-    expect(screen.getByRole("button", { name: /switch to dark mode/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /switch to light mode/i })).toBeInTheDocument();
   });
 
   it("toggles back and forth, persisting each choice", async () => {
     const user = userEvent.setup();
     render(<ThemeToggle />);
 
-    await user.click(screen.getByRole("button", { name: /switch to light mode/i }));
-    expect(localStorage.getItem("renteasy-theme")).toBe("light");
-
+    // Starts light (the default), so the first click switches to dark.
     await user.click(screen.getByRole("button", { name: /switch to dark mode/i }));
-    expect(document.documentElement.dataset.theme).toBe("dark");
     expect(localStorage.getItem("renteasy-theme")).toBe("dark");
+
+    await user.click(screen.getByRole("button", { name: /switch to light mode/i }));
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(localStorage.getItem("renteasy-theme")).toBe("light");
   });
 });

@@ -6,13 +6,13 @@
  * value without prop-drilling — nothing here does yet, so this is a hook, not
  * `ThemeContext.jsx` plus a provider wrapping `main.jsx`.
  *
- * THE INITIAL VALUE COMES FROM THE DOM, NOT FROM LOCALSTORAGE OR `matchMedia` AGAIN.
- * `index.html` runs an inline script, synchronously, before React ever mounts,
- * that reads `localStorage` (falling back to the OS preference) and sets
- * `document.documentElement.dataset.theme` — that is what stops a flash of the
- * wrong theme on load. Re-deriving the same answer here from scratch would risk
- * disagreeing with what the page already painted; reading the attribute the script
- * already settled on cannot.
+ * THE INITIAL VALUE COMES FROM THE DOM, NOT FROM LOCALSTORAGE AGAIN. `index.html`
+ * runs an inline script, synchronously, before React ever mounts, that reads
+ * `localStorage` (falling back to LIGHT — the app's default, by direct request,
+ * not the OS preference) and sets `document.documentElement.dataset.theme` — that
+ * is what stops a flash of the wrong theme on load. Re-deriving the same answer
+ * here from scratch would risk disagreeing with what the page already painted;
+ * reading the attribute the script already settled on cannot.
  */
 
 import { useCallback, useState } from "react";
@@ -35,7 +35,7 @@ function applyTheme(theme) {
 }
 
 export function useTheme() {
-  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || "dark");
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || "light");
 
   const toggleTheme = useCallback(() => {
     setTheme((current) => {

@@ -7,31 +7,30 @@
 
     <!-- Matches --color-canvas of whichever theme is active — hooks/useTheme.js
          keeps this meta's `content` in sync on every toggle. The value here is
-         only the pre-JS default; see the script below for what actually decides. -->
-    <meta name="theme-color" content="#0A0B0D" />
-    <!-- Both, not just "dark": this is a HINT the browser can use before any CSS
-         has run, and the app now supports either. The actual, current scheme is
-         decided by the `color-scheme` CSS property (index.css) and the inline
-         style the script below sets — both outrank this tag once they apply. -->
-    <meta name="color-scheme" content="dark light" />
+         only the pre-JS default (light, matching the script below), for the
+         instant before that script has run. -->
+    <meta name="theme-color" content="#F8F9FB" />
+    <!-- Both, "light" first since that is now the default: this is a HINT the
+         browser can use before any CSS has run, and the app supports either. The
+         actual, current scheme is decided by the `color-scheme` CSS property
+         (index.css) and the inline style the script below sets — both outrank
+         this tag once they apply. -->
+    <meta name="color-scheme" content="light dark" />
 
     <!-- THE NO-FLASH-OF-THE-WRONG-THEME SCRIPT. Must run synchronously, in <head>,
          before any stylesheet paints — React mounting later would show one frame
          (or, on a slow connection, much longer) of the wrong theme first. Reads a
-         stored choice; a first-ever visit falls back to the OS preference rather
-         than assuming dark, so "match my system" is the default and an explicit
-         toggle is what overrides it from then on. hooks/useTheme.js reads
-         `documentElement.dataset.theme` right back off the DOM rather than
-         re-deriving this, so the two can never disagree. -->
+         stored choice; a first-ever visit defaults to LIGHT, by direct request —
+         not the OS preference, so a visitor whose system is set to dark still
+         lands on the same light storefront everyone else does. An explicit toggle
+         (persisted to localStorage) is the only thing that overrides this from
+         then on. hooks/useTheme.js reads `documentElement.dataset.theme` right
+         back off the DOM rather than re-deriving this, so the two can never
+         disagree. -->
     <script>
       (function () {
         var stored = localStorage.getItem("renteasy-theme");
-        var theme =
-          stored === "light" || stored === "dark"
-            ? stored
-            : window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
-              ? "light"
-              : "dark";
+        var theme = stored === "dark" ? "dark" : "light";
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
       })();
