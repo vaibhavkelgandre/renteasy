@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { App } from "./App.jsx";
+import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import "./index.css";
 
 createRoot(document.getElementById("root")).render(
@@ -19,10 +20,14 @@ createRoot(document.getElementById("root")).render(
   // the second invocation would have reported a perfectly good link as broken. That
   // component now guards with a ref. Production runs each effect once.
   <StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </BrowserRouter>
+    {/* Outside the router and the auth provider, deliberately — either can throw
+        too, and this is the one thing above them that must never itself fail. */}
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>
 );
