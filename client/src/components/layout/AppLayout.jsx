@@ -11,6 +11,7 @@
 
 import { Outlet } from "react-router-dom";
 import { Header } from "./Header.jsx";
+import { Footer } from "./Footer.jsx";
 import { VerifyBanner } from "../VerifyBanner.jsx";
 
 export function AppLayout() {
@@ -39,6 +40,7 @@ export function AppLayout() {
       <main className="mx-auto w-full max-w-content flex-1 px-5 pb-16 pt-6 lg:px-8">
         <Outlet />
       </main>
+      <Footer />
     </div>
   );
 }
