@@ -5,14 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RentEasy — rent almost anything, by the hour, day or month</title>
 
-    <!-- Matches --color-canvas, so the mobile browser chrome and the page are one
-         surface. A pale strip above a near-black page is the most visible way a dark
-         site gives itself away as a retrofit. -->
+    <!-- Matches --color-canvas of whichever theme is active — hooks/useTheme.js
+         keeps this meta's `content` in sync on every toggle. The value here is
+         only the pre-JS default; see the script below for what actually decides. -->
     <meta name="theme-color" content="#0A0B0D" />
-    <!-- Tells the browser to draw its own widgets (scrollbars, form controls, the
-         PDF viewer) dark. Without it Chrome renders a bright scrollbar down the side
-         of a dark page. -->
-    <meta name="color-scheme" content="dark" />
+    <!-- Both, not just "dark": this is a HINT the browser can use before any CSS
+         has run, and the app now supports either. The actual, current scheme is
+         decided by the `color-scheme` CSS property (index.css) and the inline
+         style the script below sets — both outrank this tag once they apply. -->
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- THE NO-FLASH-OF-THE-WRONG-THEME SCRIPT. Must run synchronously, in <head>,
+         before any stylesheet paints — React mounting later would show one frame
+         (or, on a slow connection, much longer) of the wrong theme first. Reads a
+         stored choice; a first-ever visit falls back to the OS preference rather
+         than assuming dark, so "match my system" is the default and an explicit
+         toggle is what overrides it from then on. hooks/useTheme.js reads
+         `documentElement.dataset.theme` right back off the DOM rather than
+         re-deriving this, so the two can never disagree. -->
+    <script>
+      (function () {
+        var stored = localStorage.getItem("renteasy-theme");
+        var theme =
+          stored === "light" || stored === "dark"
+            ? stored
+            : window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
 
     <!-- ONE TYPEFACE: Manrope.
          The previous build used the system stack to avoid a blocking request, and the

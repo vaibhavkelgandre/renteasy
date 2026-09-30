@@ -140,6 +140,61 @@
   --container-content: 1440px;
 }
 
+/* ==========================================================================
+ * LIGHT MODE — every token above, redefined for a light ground.
+ *
+ * DELIBERATELY OUTSIDE ANY @layer, and placed right after @theme closes. Tailwind
+ * v4 emits @theme's custom properties onto `:root`; a later, unlayered rule with
+ * higher specificity than plain `:root` (the attribute selector below) is what
+ * reliably wins regardless of exactly which layer Tailwind put the originals in —
+ * relying on `@layer base` ordering alone would be betting on an implementation
+ * detail this file does not control.
+ *
+ * TOGGLED BY `data-theme` ON `<html>`, SET BEFORE REACT EVER MOUNTS — see the
+ * inline script in index.html and hooks/useTheme.js. Dark is the default (no
+ * attribute at all still renders dark, matching this app's original identity),
+ * so this block only ever ADDS the light variant, never removes the dark one.
+ *
+ * The relationships between steps are kept the same as the dark palette, not the
+ * exact hexes — see each dark-mode comment above for what a given token is FOR;
+ * only the numbers change here.
+ * ========================================================================== */
+:root[data-theme="light"] {
+  --color-canvas: #f8f9fb;
+  --color-surface: #ffffff;
+  --color-raised: #eef0f3;
+  --color-sunken: #e6e9ee;
+
+  --color-line: #e2e5ea;
+  --color-line-strong: #c7cbd3;
+
+  --color-ink: #14161a;
+  --color-ink-soft: #3a3f47;
+  --color-muted: #6b7280;
+  --color-faint: #9aa0aa;
+
+  /* A LIGHTER FILL WOULD FAIL CONTRAST HERE, WHICH IS WHY THIS ISN'T THE SAME HEX
+   * AS DARK MODE'S ACCENT. `#14b8a6` (dark mode's accent) against WHITE text is
+   * under 2.5:1 — fine as a button fill with white text on top, but this colour is
+   * also used bare as text (the nav underline, the logo's second word), where it
+   * needs to hold its own against `canvas`. A step darker clears that bar without
+   * changing which hue reads as "teal". Hover goes lighter and press goes darker
+   * than the base here — the reverse of dark mode, where hover lightens toward
+   * white and press darkens toward black; on a light ground the equivalent "more
+   * emphasis" direction is the opposite. */
+  --color-accent: #0d9488;
+  --color-accent-hover: #0f766e;
+  --color-accent-press: #115e59;
+  --color-accent-soft: #ccfbf1;
+  --color-accent-line: #5eead4;
+  --color-accent-ink: #ffffff;
+
+  --color-good: #16a34a;
+  --color-good-soft: #dcfce7;
+  --color-bad: #e11d48;
+  --color-bad-soft: #ffe4e6;
+}
+
 @layer base {
   html {
     /* Stops the layout shifting sideways when a page grows tall enough to gain a
@@ -149,6 +204,18 @@
      * browser draws a light scrollbar down a black page. */
     scrollbar-width: thin;
     scrollbar-color: var(--color-line-strong) transparent;
+
+    /* THE DEFAULT ONLY. `useTheme.js` sets the actual, current value directly as
+     * an inline style on this same element on every load and every toggle — an
+     * inline style always outranks a stylesheet rule, so this line only matters
+     * for the one instant before that script has run (there isn't one in
+     * practice; index.html's inline script runs before first paint) and as a
+     * documented fallback if it somehow didn't. */
+    color-scheme: dark;
+  }
+
+  html[data-theme="light"] {
+    color-scheme: light;
   }
 
   body {
@@ -240,6 +307,15 @@
   input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
     @apply opacity-90;
   }
+
+  /* The invert above assumes a DARK field with a light-on-dark browser glyph.
+   * Chrome's native calendar glyph is already dark, which is right for a light
+   * field — inverting it there would turn it white and disappear against
+   * `canvas`. Un-inverting is cheaper than parameterising the filter. */
+  html[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator,
+  html[data-theme="light"] input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: none;
+  }
 }
 
 @layer utilities {
@@ -304,5 +380,25 @@
       black 55%,
       transparent 100%
     );
+  }
+
+  /**
+   * LIGHT MODE CANNOT USE THE SAME TRICK, so this isn't a themed variant of the
+   * rule above — it undoes it. `mix-blend-mode: lighten` keeps whichever pixel is
+   * BRIGHTER; against a white canvas that is always the canvas, so the entire
+   * image — product photography included, not just its background — bleaches out
+   * to near-invisible. Confirmed by looking at it, not assumed.
+   *
+   * The fix is the ORIGINAL treatment this class's own comment says it replaced: a
+   * plain frame. That was wrong only on a dark canvas, where a bordered box drew a
+   * visible seam against the page; on a light canvas a photo with its own dark
+   * background inside a light card is the ordinary, expected way to show one.
+   */
+  html[data-theme="light"] .hero-banner-blend {
+    mix-blend-mode: normal;
+    mask-image: none;
+    -webkit-mask-image: none;
+    border-radius: 1rem;
+    border: 1px solid var(--color-line);
   }
 }

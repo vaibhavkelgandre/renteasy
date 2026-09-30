@@ -27,6 +27,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { AccountMenu } from "./AccountMenu.jsx";
 import { SearchBox } from "./SearchBox.jsx";
 import { NotificationBell } from "./NotificationBell.jsx";
+import { ThemeToggle } from "./ThemeToggle.jsx";
 import { useUnreadMessages } from "../../hooks/useUnreadMessages.js";
 
 /**
@@ -160,6 +161,11 @@ export function Header() {
           )}
 
           <div className="flex items-center gap-2 pl-1">
+            {/* Above the auth branch, deliberately — a signed-out visitor deciding
+                whether to sign up cares about this exactly as much as somebody
+                signed in, unlike the bell or "List an item" below. */}
+            <ThemeToggle />
+
             {user ? (
               <>
                 {/* The bell is a thing that happens TO you, so it belongs with the
