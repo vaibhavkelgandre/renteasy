@@ -383,20 +383,46 @@
   }
 
   /**
-   * LIGHT MODE KEEPS THE MASK, DROPS ONLY THE BLEND. `mix-blend-mode: lighten`
-   * keeps whichever pixel is BRIGHTER; against a white canvas that is always the
-   * canvas, so the entire image — product photography included, not just its
-   * background — bleached out to near-invisible. A plain bordered frame was tried
-   * as the fix and reported back as not reading as "blended" — a hard rectangle is
-   * exactly the seam this whole class exists to avoid, just moved from dark mode
-   * to light. So this keeps the SAME radial mask the dark-mode rule already uses
-   * (inherited, not redeclared — nothing here touches mask-image): the image still
-   * fades to transparent well before its own edge, it just does so at its true
-   * colours instead of blended-then-bleached ones. What is left is the image's own
-   * dark background as a soft-edged shape floating on the page, which is the same
-   * visual language as dark mode's version, not a boxed-in replacement for it.
+   * THE LIGHT-MODE HERO IS A DIFFERENT ASSET, NOT A THEMED VARIANT OF THE DARK
+   * ONE. Two things were tried on the dark artwork first — a hard bordered frame,
+   * then dropping just the blend while keeping the mask — and both were reported
+   * back as not reading as genuinely "blended", because the dark image's own
+   * near-black background has nothing in a light image to disappear into. The
+   * asset supplied for light mode already has a light sky/floor, so it does not
+   * need `mix-blend-mode: lighten` at all — `normal` (the default; only set here
+   * for the reader's benefit) already sits close to `--color-canvas` without any
+   * trick. It keeps the SAME radial mask as the dark version, for the same reason:
+   * fading to transparent before the actual edge is what stops a hard rectangle
+   * forming, regardless of which image is behind it.
    */
-  html[data-theme="light"] .hero-banner-blend {
+  .hero-banner-blend-light {
     mix-blend-mode: normal;
+    mask-image: radial-gradient(ellipse 68% 68% at 50% 50%, black 55%, transparent 100%);
+    -webkit-mask-image: radial-gradient(
+      ellipse 68% 68% at 50% 50%,
+      black 55%,
+      transparent 100%
+    );
+  }
+
+  /**
+   * WHICH OF THE TWO HERO IMAGES IS IN THE DOCUMENT FLOW — both `<img>` elements
+   * are always rendered (see HomeHero.jsx), so this is a display swap, not a
+   * conditional render. Kept in plain CSS, keyed off the same `html[data-theme]`
+   * attribute as every other theme rule in this file, rather than reading
+   * `useTheme()` in HomeHero.jsx — that hook has exactly one consumer today
+   * (ThemeToggle); giving it a second, unrelated consumer with no shared context
+   * between them would go stale the instant one toggles without the other
+   * re-rendering. A CSS rule reading the DOM attribute directly has no such
+   * problem, because there is nothing to keep two copies of in sync.
+   */
+  .hero-light-only {
+    display: none;
+  }
+  html[data-theme="light"] .hero-dark-only {
+    display: none;
+  }
+  html[data-theme="light"] .hero-light-only {
+    display: block;
   }
 }

@@ -104,22 +104,38 @@ export function HomeHero({ totalListings = null, onBrowseClick }) {
 
         {/* `order-first` on mobile would put a tall image above the headline, pushing
             the actual pitch below the fold — so it stays document-order (below the
-            text) until `lg`, where the grid places it beside the text instead. */}
+            text) until `lg`, where the grid places it beside the text instead.
+
+            TWO IMAGES, ONE PER THEME, BOTH ALWAYS IN THE DOM — swapped by plain CSS
+            (`.hero-dark-only`/`.hero-light-only` in index.css) keyed off the same
+            `html[data-theme]` attribute everything else in the theme system reads,
+            never React state. The dark artwork's own near-black background is what
+            `.hero-banner-blend`'s `mix-blend-mode: lighten` trick depends on — it
+            has no equivalent light-background asset baked in, so swapping the WHOLE
+            image for one shot with a naturally light sky/floor is simpler and looks
+            better than trying to theme one image two ways forever. */}
         <div className="mx-auto w-full max-w-2xl lg:max-w-none">
           <img
             src="/images/home-hero-banner.webp"
-            // Decorative: every category it depicts (cameras, bikes, tools, a tent,
-            // a sofa) is already named in the paragraph beside it, so a screen
-            // reader announcing this image again would be repeating itself.
             alt=""
             // Matches the source asset's own 1671x940 ratio, so it never has to
             // letterbox or stretch — `object-contain` is then a no-op sizing decision
             // rather than a fallback for a mismatched box.
-            className="hero-banner-blend aspect-[1671/940] w-full scale-125 object-contain"
+            className="hero-banner-blend hero-dark-only aspect-[1671/940] w-full scale-125 object-contain"
             width={1671}
             height={940}
             // Eager, not lazy: this is above the fold on every viewport it renders
             // on, so lazy-loading it would just delay something already visible.
+            loading="eager"
+          />
+          <img
+            src="/images/home-hero-banner-light.webp"
+            alt=""
+            // Own aspect ratio (1536x1024, 3:2) — the two assets are not the same
+            // shape, so this cannot share the dark image's aspect-[] class.
+            className="hero-banner-blend-light hero-light-only aspect-[1536/1024] w-full scale-125 object-contain"
+            width={1536}
+            height={1024}
             loading="eager"
           />
         </div>
